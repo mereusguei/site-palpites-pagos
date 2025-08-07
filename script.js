@@ -1,7 +1,60 @@
+// URL da sua API (quando estiver rodando localmente)
+const API_URL = 'https://site-palpites-pagos.vercel.app';
+
+// 
 document.addEventListener('DOMContentLoaded', () => {
 
-    // URL da sua API (quando estiver rodando localmente)
-const API_URL = 'https://site-palpites-pagos.vercel.app';
+    const userNavigation = document.getElementById('user-navigation');
+    const mainContent = document.querySelector('.container'); // Seleciona o container principal
+
+    // Tenta pegar os dados do usuário salvos no navegador (no localStorage)
+    const user = JSON.parse(localStorage.getItem('user'));
+    const token = localStorage.getItem('token');
+
+    // LÓGICA DE AUTENTICAÇÃO
+    if (user && token) {
+        // --- CASO O USUÁRIO ESTEJA LOGADO ---
+
+        // 1. Preenche a navegação com os dados do usuário
+        userNavigation.innerHTML = `
+            <div class="user-profile">
+                <img src="https://i.pravatar.cc/40?u=${user.username}" alt="Foto do Usuário">
+                <span>Olá, ${user.username}</span>
+            </div>
+            <button id="logout-btn" class="btn btn-logout">Sair</button>
+        `;
+
+        // 2. Adiciona a funcionalidade ao botão de logout
+        const logoutBtn = document.getElementById('logout-btn');
+        logoutBtn.addEventListener('click', () => {
+            localStorage.removeItem('user');
+            localStorage.removeItem('token');
+            alert('Você saiu.');
+            window.location.reload(); // Recarrega a página
+        });
+
+        // 3. Busca os dados do evento (pois o usuário está autorizado)
+        fetchEventData(1);
+
+    } else {
+        // --- CASO O USUÁRIO NÃO ESTEJA LOGADO ---
+        
+        // 1. Preenche a navegação com botões de Login e Cadastro
+        userNavigation.innerHTML = `
+            <div class="auth-buttons">
+                <a href="login.html" class="btn">Login</a>
+                <a href="register.html" class="btn btn-primary">Cadastro</a>
+            </div>
+        `;
+
+        // 2. Substitui todo o conteúdo principal por uma mensagem de bloqueio
+        mainContent.innerHTML = `
+            <div class="auth-container" style="text-align: center;">
+                <h2>Bem-vindo ao Octagon Oracle!</h2>
+                <p>Por favor, faça login ou cadastre-se para ver os eventos e fazer seus palpites.</p>
+            </div>
+        `;
+    }
 
 // Armazenará os dados vindos da API
 let eventData = {
