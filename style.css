@@ -362,3 +362,14 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+#pick-form {
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Isso vai centralizar o botão */
+}
+
+#pick-form .btn-primary {
+    width: 80%; /* Opcional: define uma largura para o botão não ficar tão pequeno */
+    max-width: 300px; /* Opcional: um limite para a largura */
+}
