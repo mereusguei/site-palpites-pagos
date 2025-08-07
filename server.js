@@ -235,6 +235,25 @@ app.post('/api/picks', async (req, res) => {
     res.status(201).json({ message: 'Palpites salvos com sucesso!'});
 });
 
+// ROTA PARA VERIFICAR O STATUS DE PAGAMENTO DE UM USUÁRIO PARA UM EVENTO
+app.get('/api/payment-status/:eventId', verifyToken, async (req, res) => {
+    const userId = req.user.id;
+    const { eventId } = req.params;
+
+    try {
+        const result = await pool.query(
+            'SELECT * FROM payments WHERE user_id = $1 AND event_id = $2 AND status = $3',
+            [userId, eventId, 'PAID']
+        );
+
+        res.json({ hasPaid: result.rows.length > 0 });
+
+    } catch (error) {
+        console.error('Erro ao verificar status de pagamento:', error);
+        res.status(500).json({ error: 'Erro interno do servidor.' });
+    }
+});
+
 // ROTA PARA CRIAR UMA PREFERÊNCIA DE PAGAMENTO
 app.post('/api/create-payment', verifyToken, async (req, res) => {
     const { eventId, eventName } = req.body;

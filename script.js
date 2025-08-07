@@ -42,22 +42,58 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- SEÇÃO DE PROTEÇÃO DE CONTEÚDO ---
-    // Esta lógica só roda se o elemento .container existir na página
-    if (mainContent) {
-        if (user && token) {
-            // Se o container existe E o usuário está logado, busca os dados do evento.
-            fetchEventData(1);
+// --- SEÇÃO DE PROTEÇÃO DE CONTEÚDO E LÓGICA DE PAGAMENTO ---
+if (mainContent && user && token) {
+    // Se estamos na página principal E o usuário está logado...
+    
+    const eventId = 1; // ID do evento atual
+    
+    // 1. Verificamos se ele já pagou por este evento
+    checkPaymentStatus(eventId, token).then(hasPaid => {
+        if (hasPaid) {
+            // 2.A. Se JÁ PAGOU, carrega os dados do evento normalmente para ele palpitar
+            fetchEventData(eventId);
+
         } else {
-            // Se o container existe E o usuário NÃO está logado, mostra a mensagem de bloqueio.
-            mainContent.innerHTML = `
-                <div class="auth-container" style="text-align: center;">
-                    <h2>Bem-vindo ao Octagon Oracle!</h2>
-                    <p>Por favor, faça login ou cadastre-se para ver os eventos e fazer seus palpites.</p>
-                </div>
-            `;
+            // 2.B. Se NÃO PAGOU, mostra o botão de pagamento
+            const paymentSection = document.getElementById('payment-section');
+            
+            // Busca o nome do evento para exibir no botão
+            // (Esta é uma chamada extra, mas garante que o nome esteja sempre correto)
+            fetch(`${API_URL}/api/events/${eventId}`, { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(res => res.json())
+                .then(eventData => {
+                    if (paymentSection) {
+                        paymentSection.innerHTML = `
+                            <button id="pay-btn" class="btn btn-primary btn-save-all">
+                                Liberar Palpites para "${eventData.eventName}" (R$ 5,00)
+                            </button>
+                        `;
+                        
+                        document.getElementById('pay-btn').addEventListener('click', () => {
+                            handlePayment(eventId, eventData.eventName, token);
+                        });
+                    }
+                });
+
+            // Apaga o conteúdo das lutas, pois o usuário não pode palpitar ainda
+            const fightGrid = document.getElementById('fight-card-grid');
+            if (fightGrid) {
+                fightGrid.innerHTML = '<p style="text-align:center; font-size: 1.2rem; padding: 40px 0;">Pague a taxa de entrada para visualizar e fazer seus palpites.</p>';
+            }
+            const bonusSection = document.querySelector('.bonus-picks-section');
+            if (bonusSection) bonusSection.style.display = 'none'; // Esconde palpites bônus
         }
-    }
+    });
+} else if (mainContent && !user) {
+    // Se estamos na página principal E o usuário NÃO está logado, mostra a mensagem de bloqueio.
+    mainContent.innerHTML = `
+        <div class="auth-container" style="text-align: center;">
+            <h2>Bem-vindo ao Octagon Oracle!</h2>
+            <p>Por favor, faça login ou cadastre-se para ver os eventos e fazer seus palpites.</p>
+        </div>
+    `;
+}
 
 
     // --- SEÇÃO DE FUNÇÕES GLOBAIS ---
@@ -108,6 +144,43 @@ async function fetchEventData(eventId) {
         if (mainContent) {
              mainContent.innerHTML = `<h2 style="color:red; text-align:center;">${error.message}</h2>`;
         }
+    }
+}
+
+async function checkPaymentStatus(eventId, token) {
+    try {
+        const response = await fetch(`${API_URL}/api/payment-status/${eventId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        return data.hasPaid;
+    } catch (error) {
+        console.error('Erro ao verificar pagamento:', error);
+        return false;
+    }
+}
+
+async function handlePayment(eventId, eventName, token) {
+    try {
+        const response = await fetch(`${API_URL}/api/create-payment`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ eventId, eventName })
+        });
+
+        const data = await response.json();
+
+        if (data.checkoutUrl) {
+            // Redireciona o usuário para a página de pagamento
+            window.location.href = data.checkoutUrl;
+        } else {
+            throw new Error('Não foi possível obter o link de pagamento.');
+        }
+    } catch (error) {
+        alert(`Erro ao iniciar pagamento: ${error.message}`);
     }
 }
 
