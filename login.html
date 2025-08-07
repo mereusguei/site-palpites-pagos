@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Octagon Oracle</title>
+    <link rel="stylesheet" href="style.css"> <!-- Reutilizando o mesmo estilo -->
+    <style>
+        /* Estilos específicos para a página de auth */
+        .auth-container { max-width: 400px; margin: 100px auto; padding: 40px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; }
+        .auth-container h2 { text-align: center; font-family: var(--font-primary); margin-bottom: 20px; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 5px; }
+        .form-group input { width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px; }
+        .auth-container .btn { width: 100%; }
+        .auth-link { text-align: center; margin-top: 20px; }
+        .auth-link a { color: var(--primary-color); }
+        #error-message { color: #ff4d4d; text-align: center; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <h2>Login</h2>
+        <div id="error-message"></div>
+        <form id="login-form">
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Senha</label>
+                <input type="password" id="password" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Entrar</button>
+        </form>
+        <div class="auth-link">
+            <p>Não tem uma conta? <a href="register.html">Cadastre-se</a></p>
+        </div>
+    </div>
+    <script src="auth.js"></script>
+</body>
+</html>

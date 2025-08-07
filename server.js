@@ -20,6 +20,91 @@ const pool = new Pool({
 app.use(cors()); // Permite requisições de outros domínios
 app.use(express.json()); // Permite que o servidor entenda JSON no corpo das requisições
 
+//
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
+// Adicione uma chave secreta para o JWT. No mundo real, isso viria de uma variável de ambiente.
+const JWT_SECRET = 'sua-chave-secreta-super-dificil-de-adivinhar-123';
+
+// ROTA DE CADASTRO (REGISTER)
+app.post('/api/auth/register', async (req, res) => {
+    const { username, email, password } = req.body;
+
+    if (!username || !email || !password) {
+        return res.status(400).json({ error: 'Por favor, preencha todos os campos.' });
+    }
+
+    try {
+        // Criptografa a senha antes de salvar
+        const salt = await bcrypt.genSalt(10);
+        const password_hash = await bcrypt.hash(password, salt);
+
+        // Insere o novo usuário no banco de dados
+        const newUserResult = await pool.query(
+            'INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id, username',
+            [username, email, password_hash]
+        );
+
+        res.status(201).json({
+            message: 'Usuário cadastrado com sucesso!',
+            user: newUserResult.rows[0]
+        });
+
+    } catch (error) {
+        console.error('Erro no cadastro:', error);
+        // Verifica se o erro é de violação de chave única (usuário/email já existe)
+        if (error.code === '23505') {
+            return res.status(409).json({ error: 'Nome de usuário ou e-mail já cadastrado.' });
+        }
+        res.status(500).json({ error: 'Erro interno do servidor.' });
+    }
+});
+
+// ROTA DE LOGIN
+app.post('/api/auth/login', async (req, res) => {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+        return res.status(400).json({ error: 'Por favor, preencha todos os campos.' });
+    }
+
+    try {
+        // Procura o usuário pelo email
+        const userResult = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+        if (userResult.rows.length === 0) {
+            return res.status(401).json({ error: 'Credenciais inválidas.' });
+        }
+        const user = userResult.rows[0];
+
+        // Compara a senha enviada com a senha criptografada no banco
+        const isMatch = await bcrypt.compare(password, user.password_hash);
+        if (!isMatch) {
+            return res.status(401).json({ error: 'Credenciais inválidas.' });
+        }
+
+        // Se a senha estiver correta, cria um token de autenticação (JWT)
+        const token = jwt.sign(
+            { id: user.id, username: user.username },
+            JWT_SECRET,
+            { expiresIn: '1d' } // Token expira em 1 dia
+        );
+
+        res.json({
+            message: 'Login bem-sucedido!',
+            token,
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email
+            }
+        });
+
+    } catch (error) {
+        console.error('Erro no login:', error);
+        res.status(500).json({ error: 'Erro interno do servidor.' });
+    }
+});
 // === NOSSAS ROTAS DA API VÊM AQUI ===
 
 // Rota de teste para ver se o servidor está funcionando
