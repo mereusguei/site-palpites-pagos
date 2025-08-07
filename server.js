@@ -269,7 +269,7 @@ app.post('/api/create-payment', verifyToken, async (req, res) => {
                         id: `evt-${eventId}`,
                         title: `Acesso aos Palpites: ${eventName}`,
                         quantity: 1,
-                        unit_price: 5.00, // Preço do acesso em R$
+                        unit_price: 0.05, // Preço do acesso em R$
                         currency_id: 'BRL',
                     }
                 ],

@@ -43,26 +43,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 // --- SEÇÃO DE PROTEÇÃO DE CONTEÚDO E LÓGICA DE PAGAMENTO ---
-if (mainContent && user && token) {
-    // Se estamos na página principal E o usuário está logado...
-    
-    const eventId = 1; // ID do evento atual
-    
-    // 1. Verificamos se ele já pagou por este evento
-    checkPaymentStatus(eventId, token).then(hasPaid => {
-        if (hasPaid) {
-            // 2.A. Se JÁ PAGOU, carrega os dados do evento normalmente para ele palpitar
-            fetchEventData(eventId);
-
-        } else {
-            // 2.B. Se NÃO PAGOU, mostra o botão de pagamento
-            const paymentSection = document.getElementById('payment-section');
-            
-            // Busca o nome do evento para exibir no botão
-            // (Esta é uma chamada extra, mas garante que o nome esteja sempre correto)
-            fetch(`${API_URL}/api/events/${eventId}`, { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(res => res.json())
+// Esta lógica só roda se o elemento .container existir na página
+if (mainContent) {
+    if (user && token) {
+        // Se estamos na página principal E o usuário está logado...
+        const eventId = 1; // ID do evento atual
+        
+        // 1. Verificamos se ele já pagou por este evento
+        checkPaymentStatus(eventId, token).then(hasPaid => {
+            if (hasPaid) {
+                // 2.A. Se JÁ PAGOU, carrega os dados do evento normalmente para ele palpitar
+                fetchEventData(eventId);
+            } else {
+                // 2.B. Se NÃO PAGOU, primeiro busca os dados para mostrar o timer e o botão
+                fetch(`${API_URL}/api/events/${eventId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                })
+                .then(res => {
+                    if (!res.ok) throw new Error('Evento não encontrado para pagamento.');
+                    return res.json();
+                })
                 .then(eventData => {
+                    // AGORA que temos os dados, podemos iniciar o timer com a data correta
+                    startCountdown(eventData.picksDeadline);
+
+                    // E TAMBÉM mostrar o botão de pagamento com o nome correto do evento
+                    const paymentSection = document.getElementById('payment-section');
                     if (paymentSection) {
                         paymentSection.innerHTML = `
                             <button id="pay-btn" class="btn btn-primary btn-save-all">
@@ -74,25 +80,31 @@ if (mainContent && user && token) {
                             handlePayment(eventId, eventData.eventName, token);
                         });
                     }
-                });
 
-            // Apaga o conteúdo das lutas, pois o usuário não pode palpitar ainda
-            const fightGrid = document.getElementById('fight-card-grid');
-            if (fightGrid) {
-                fightGrid.innerHTML = '<p style="text-align:center; font-size: 1.2rem; padding: 40px 0;">Pague a taxa de entrada para visualizar e fazer seus palpites.</p>';
+                    // E por fim, a mensagem de bloqueio
+                    const fightGrid = document.getElementById('fight-card-grid');
+                    if (fightGrid) {
+                        fightGrid.innerHTML = '<p style="text-align:center; font-size: 1.2rem; padding: 40px 0;">Pague a taxa de entrada para visualizar e fazer seus palpites.</p>';
+                    }
+                    const bonusSection = document.querySelector('.bonus-picks-section');
+                    if (bonusSection) bonusSection.style.display = 'none';
+                })
+                .catch(error => {
+                    console.error("Erro ao buscar dados do evento para pagamento:", error);
+                    // Mostra uma mensagem de erro genérica se não conseguir buscar o evento
+                    if(mainContent) mainContent.innerHTML = `<h2 style="color:red; text-align:center;">Não foi possível carregar os dados do evento. Tente novamente mais tarde.</h2>`;
+                });
             }
-            const bonusSection = document.querySelector('.bonus-picks-section');
-            if (bonusSection) bonusSection.style.display = 'none'; // Esconde palpites bônus
-        }
-    });
-} else if (mainContent && !user) {
-    // Se estamos na página principal E o usuário NÃO está logado, mostra a mensagem de bloqueio.
-    mainContent.innerHTML = `
-        <div class="auth-container" style="text-align: center;">
-            <h2>Bem-vindo ao Octagon Oracle!</h2>
-            <p>Por favor, faça login ou cadastre-se para ver os eventos e fazer seus palpites.</p>
-        </div>
-    `;
+        });
+    } else if (mainContent && !user) {
+        // Se estamos na página principal E o usuário NÃO está logado, mostra a mensagem de bloqueio.
+        mainContent.innerHTML = `
+            <div class="auth-container" style="text-align: center;">
+                <h2>Bem-vindo ao Octagon Oracle!</h2>
+                <p>Por favor, faça login ou cadastre-se para ver os eventos e fazer seus palpites.</p>
+            </div>
+        `;
+    }
 }
 
 
@@ -104,7 +116,7 @@ if (mainContent && user && token) {
         userPicks: {}
     };
 
-// No script.js, substitua a função fetchEventData
+// definição da função fetchEventData
 async function fetchEventData(eventId) {
     // Pega o token para enviar na requisição
     const token = localStorage.getItem('token');
@@ -507,6 +519,5 @@ if(pickForm){
         });
     }
 
-    // Iniciar
-    fetchEventData(1);
+
 });
