@@ -1,0 +1,364 @@
+:root {
+    --bg-color: #0d1117;
+    --primary-color: #00f2ff;
+    --secondary-color: #ff00c1;
+    --card-bg: rgba(22, 27, 34, 0.6);
+    --border-color: rgba(0, 242, 255, 0.2);
+    --text-color: #c9d1d9;
+    --text-muted: #8b949e;
+    --font-primary: 'Orbitron', sans-serif;
+    --font-secondary: 'Roboto', sans-serif;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: var(--font-secondary);
+    background-image:
+        radial-gradient(circle at 1% 1%, var(--primary-color), transparent 25%),
+        radial-gradient(circle at 99% 99%, var(--secondary-color), transparent 25%);
+    background-attachment: fixed;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header */
+.main-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 40px;
+    background: rgba(13, 17, 23, 0.8);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+.logo {
+    font-family: var(--font-primary);
+    font-size: 2rem;
+    color: var(--primary-color);
+    text-shadow: 0 0 10px var(--primary-color);
+}
+.logo span {
+    color: #fff;
+    text-shadow: none;
+}
+
+.user-nav {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.user-profile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.user-profile img {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 2px solid var(--primary-color);
+}
+
+/* Botões */
+.btn {
+    border: 1px solid var(--primary-color);
+    background: transparent;
+    color: var(--primary-color);
+    padding: 10px 20px;
+    font-family: var(--font-primary);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+}
+
+.btn:hover {
+    background: var(--primary-color);
+    color: var(--bg-color);
+    box-shadow: 0 0 15px var(--primary-color);
+}
+
+.btn-primary {
+    background: var(--primary-color);
+    color: var(--bg-color);
+    border: none;
+}
+.btn-primary:hover {
+    background: #fff;
+    box-shadow: 0 0 20px var(--primary-color);
+}
+
+/* Event Header */
+.event-header {
+    text-align: center;
+    padding: 40px 0;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 40px;
+}
+.event-header h2 {
+    font-family: var(--font-primary);
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+}
+.timer {
+    margin-top: 20px;
+    font-size: 1.2rem;
+}
+.timer strong {
+    color: var(--secondary-color);
+    text-shadow: 0 0 8px var(--secondary-color);
+}
+
+/* Fight Card */
+.fight-card-section h3, .bonus-picks-section h3 {
+    font-family: var(--font-primary);
+    font-size: 1.8rem;
+    color: var(--primary-color);
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 10px;
+}
+
+.fight-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+}
+
+.fight-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 20px;
+    backdrop-filter: blur(5px);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    animation: fadeIn 0.5s ease-out;
+}
+
+.fight-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 0 20px var(--border-color);
+}
+
+.fighters {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.fighter {
+    text-align: center;
+}
+.fighter img {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--text-muted);
+}
+.fighter h4 {
+    margin-top: 10px;
+    font-size: 1.1rem;
+}
+.fighter span {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.vs {
+    font-family: var(--font-primary);
+    font-size: 2rem;
+    color: var(--secondary-color);
+}
+
+.pick-status {
+    text-align: center;
+}
+.pick-status .palpite-feito {
+    color: var(--primary-color);
+    font-weight: bold;
+}
+
+/* Bonus Picks */
+.bonus-picks-section {
+    margin-top: 40px;
+}
+.bonus-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+.bonus-pick-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 20px;
+}
+.bonus-pick-card label {
+    font-family: var(--font-primary);
+    display: block;
+    margin-bottom: 10px;
+}
+.custom-select {
+    width: 100%;
+    background: var(--bg-color);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+.actions-footer {
+    text-align: center;
+    margin-top: 40px;
+    padding: 20px;
+}
+.btn-save-all {
+    padding: 15px 40px;
+    font-size: 1.2rem;
+}
+
+/* Modal */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    z-index: 2000;
+}
+.modal-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.modal-content {
+    background: var(--card-bg);
+    padding: 30px;
+    border-radius: 12px;
+    border: 1px solid var(--primary-color);
+    box-shadow: 0 0 30px var(--primary-color);
+    width: 90%;
+    max-width: 600px;
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+}
+
+.modal-overlay.active .modal-content {
+    transform: scale(1);
+}
+
+.close-modal {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 2rem;
+    cursor: pointer;
+}
+
+#modal-title {
+    font-family: var(--font-primary);
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.modal-fighters {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    margin-bottom: 30px;
+}
+.fighter-option {
+    cursor: pointer;
+    padding: 15px;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+.fighter-option:hover {
+    background: rgba(0, 242, 255, 0.1);
+}
+.fighter-option.selected {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 15px var(--primary-color);
+}
+.fighter-option img {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+}
+.fighter-option h4 {
+    text-align: center;
+    margin-top: 10px;
+}
+.vs-text {
+    font-family: var(--font-primary);
+    font-size: 2rem;
+}
+
+#pick-form .form-group {
+    margin-bottom: 20px;
+}
+
+.method-options {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+}
+.method-btn {
+    flex-grow: 1;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-color);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+.method-btn:hover, .method-btn.selected {
+    background-color: var(--primary-color);
+    color: var(--bg-color);
+    border-color: var(--primary-color);
+}
+
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 768px) {
+    .fight-card-grid {
+        grid-template-columns: 1fr;
+    }
+    .bonus-grid {
+        grid-template-columns: 1fr;
+    }
+}

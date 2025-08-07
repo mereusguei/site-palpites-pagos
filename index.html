@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Octagon Oracle - Palpites UFC 308</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <header class="main-header">
+        <h1 class="logo">OCTAGON <span>ORACLE</span></h1>
+        <nav class="user-nav">
+            <div class="user-profile">
+                <img src="https://i.pravatar.cc/40?u=user1" alt="Foto do Usuário">
+                <span>Olá, Player1</span>
+            </div>
+            <button class="btn btn-logout">Sair</button>
+        </nav>
+    </header>
+
+    <main class="container">
+        <section class="event-header">
+            <h2>UFC 308: Pereira vs. Prochazka 2</h2>
+            <p>Faça seus palpites e concorra a prêmios incríveis!</p>
+            <div class="timer">
+                <span>Tempo restante para palpites:</span>
+                <strong id="countdown">2d 15h 30m 10s</strong>
+            </div>
+        </section>
+
+        <section class="fight-card-section">
+            <h3>Card Principal</h3>
+            <div class="fight-card-grid" id="fight-card-grid">
+                <!-- As lutas serão inseridas aqui pelo JavaScript -->
+            </div>
+        </section>
+
+        <section class="bonus-picks-section">
+            <h3>Palpites Bônus</h3>
+            <div class="bonus-grid">
+                <div class="bonus-pick-card">
+                    <label for="fight-of-night">Luta da Noite:</label>
+                    <select id="fight-of-night" class="custom-select">
+                        <option value="">Selecione a luta...</option>
+                    </select>
+                </div>
+                <div class="bonus-pick-card">
+                    <label for="performance-of-night">Performance da Noite:</label>
+                    <select id="performance-of-night" class="custom-select">
+                         <option value="">Selecione o lutador...</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <div class="actions-footer">
+            <button class="btn btn-primary btn-save-all">Salvar Todos os Palpites (R$ 5,00)</button>
+        </div>
+    </main>
+
+    <!-- Modal para Palpites -->
+    <div id="pick-modal" class="modal-overlay">
+        <div class="modal-content">
+            <button class="close-modal">&times;</button>
+            <h3 id="modal-title">Seu Palpite</h3>
+            <div class="modal-fighters">
+                <div id="modal-fighter1" class="fighter-option"></div>
+                <span class="vs-text">VS</span>
+                <div id="modal-fighter2" class="fighter-option"></div>
+            </div>
+
+            <form id="pick-form">
+                <input type="hidden" id="fight-id">
+                <input type="hidden" id="winner" name="winner">
+
+                <!-- Camada 2: Método da Vitória -->
+                <div class="form-group" id="method-group" style="display: none;">
+                    <label>Método da Vitória:</label>
+                    <div class="method-options">
+                        <button type="button" class="method-btn" data-method="KO/TKO">KO/TKO</button>
+                        <button type="button" class="method-btn" data-method="Submission">Finalização</button>
+                        <button type="button" class="method-btn" data-method="Decision">Decisão</button>
+                    </div>
+                </div>
+
+                <!-- Camada 3: Detalhes do Método -->
+                <div class="form-group" id="round-group" style="display: none;">
+                    <label>Em qual Round?</label>
+                    <select name="round" class="custom-select">
+                        <option value="1">Round 1</option>
+                        <option value="2">Round 2</option>
+                        <option value="3">Round 3</option>
+                        <!-- Adicionar Rounds 4 e 5 se for luta principal/título -->
+                    </select>
+                </div>
+
+                <div class="form-group" id="decision-type-group" style="display: none;">
+                    <label>Tipo de Decisão:</label>
+                    <select name="decision-type" class="custom-select">
+                        <option value="Unanimous">Unânime</option>
+                        <option value="Split">Dividida</option>
+                    </select>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Confirmar Palpite</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
