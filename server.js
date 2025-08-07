@@ -301,26 +301,34 @@ app.post('/api/create-payment', verifyToken, async (req, res) => {
 // ROTA PARA RECEBER NOTIFICAÇÕES (WEBHOOK) DO MERCADO PAGO
 app.post('/api/payment-webhook', async (req, res) => {
     const notification = req.body;
-    
+
     console.log('Webhook recebido:', notification);
 
     try {
-        // Verificamos se é uma notificação de pagamento e se foi aprovado
-        if (notification.type === 'payment' && notification.action === 'payment.updated') {
-            // Aqui, em um projeto real, buscaríamos os detalhes do pagamento na API do MP
-            // para pegar o `metadata` e confirmar o status.
-            // Por simplicidade, vamos assumir que a notificação é válida por enquanto.
-            // A lógica completa exigiria mais uma chamada à API do MP.
+        if (notification.type === 'payment') {
+            const paymentId = notification.data.id;
+
+            // Busca os detalhes completos do pagamento na API do Mercado Pago
+            const paymentResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+                headers: { 'Authorization': `Bearer ${process.env.MP_ACCESS_TOKEN}` }
+            });
+            const paymentDetails = await paymentResponse.json();
             
-            // --- Lógica Simplificada para Inserir na Tabela `payments` ---
-            // Para pegar o userId e eventId, precisaríamos buscar o pagamento pelo `notification.data.id`
-            // e extrair o `metadata`. Vamos simular isso por enquanto.
-            
-            console.log('Pagamento APROVADO recebido! Lógica de salvar na tabela `payments` seria executada aqui.');
+            console.log('Detalhes do pagamento:', paymentDetails.status, paymentDetails.metadata);
+
+            // Se o pagamento foi aprovado e tem nosso metadata
+            if (paymentDetails.status === 'approved' && paymentDetails.metadata) {
+                const { user_id, event_id } = paymentDetails.metadata;
+
+                // Salva o registro na nossa tabela `payments`
+                await pool.query(
+                    'INSERT INTO payments (user_id, event_id, status) VALUES ($1, $2, $3)',
+                    [user_id, event_id, 'PAID']
+                );
+                console.log(`Pagamento para user ${user_id} e evento ${event_id} salvo com sucesso!`);
+            }
         }
-
-        res.sendStatus(200); // Responde ao Mercado Pago que recebemos a notificação com sucesso.
-
+        res.sendStatus(200);
     } catch (error) {
         console.error('Erro no webhook:', error);
         res.sendStatus(500);
