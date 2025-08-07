@@ -104,25 +104,25 @@ function populateBonusPicks(fights) {
         eventData.fights.forEach(fight => {
             const pick = eventData.userPicks[fight.id];
             const fightCard = `
-                <div class="fight-card" data-fight-id="${fight.id}">
-                    <div class="fighters">
-                        <div class="fighter">
-                            <img src="${fight.img1}" alt="${fight.fighter1}">
-                            <h4>${fight.fighter1}</h4>
-                            <span>${fight.record1}</span>
-                        </div>
-                        <span class="vs">VS</span>
-                        <div class="fighter">
-                            <img src="${fight.img2}" alt="${fight.fighter2}">
-                            <h4>${fight.fighter2}</h4>
-                            <span>${fight.record2}</span>
-                        </div>
-                    </div>
-                    <div class="pick-status">
-                        ${pick ? `<p class="palpite-feito">Palpite: ${pick.winnerName} por ${pick.methodDisplay}</p>` : '<button class="btn btn-pick">Fazer Palpite</button>'}
-                    </div>
-                </div>
-            `;
+    <div class="fight-card" data-fight-id="${fight.id}">
+        <div class="fighters">
+            <div class="fighter">
+                <img src="${fight.fighter1_img || 'https://via.placeholder.com/80'}" alt="${fight.fighter1_name}">
+                <h4>${fight.fighter1_name}</h4>
+                <span>${fight.fighter1_record || ''}</span>
+            </div>
+            <span class="vs">VS</span>
+            <div class="fighter">
+                <img src="${fight.fighter2_img || 'https://via.placeholder.com/80'}" alt="${fight.fighter2_name}">
+                <h4>${fight.fighter2_name}</h4>
+                <span>${fight.fighter2_record || ''}</span>
+            </div>
+        </div>
+        <div class="pick-status">
+            ${pick ? `<p class="palpite-feito">Palpite: ${pick.winnerName} por ${pick.methodDisplay}</p>` : '<button class="btn btn-pick">Fazer Palpite</button>'}
+        </div>
+    </div>
+`;
             fightCardGrid.insertAdjacentHTML('beforeend', fightCard);
         });
         addPickButtonListeners();
