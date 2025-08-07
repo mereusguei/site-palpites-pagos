@@ -366,7 +366,16 @@ body {
 #pick-form {
     display: flex;
     flex-direction: column;
-    align-items: center; /* Isso vai centralizar o botão */
+    align-items: center; /* Centraliza os filhos diretos (o botão) */
+    width: 100%; /* Garante que o formulário ocupe o espaço disponível */
+}
+
+/* NOVA REGRA PARA CENTRALIZAR O CONTEÚDO DOS GRUPOS */
+#pick-form .form-group {
+    width: 80%; /* Define uma largura para os grupos de formulário */
+    max-width: 400px; /* Um limite máximo para não ficar muito largo em telas grandes */
+    text-align: center; /* CENTRALIZA o texto (o <label>) dentro do grupo */
+    margin-bottom: 20px; /* Mantém o espaçamento */
 }
 
 #pick-form .btn-primary {
