@@ -238,18 +238,12 @@ function openPickModal(fightId) {
     }
 }
 
-// =================== APAGUE TUDO DAQUI PARA CIMA E COLE ESTE BLOCO ===================
-
 // --- ADICIONA A LÓGICA DE INTERAÇÃO DO MODAL ---
-// Esta seção só deve existir UMA VEZ no seu código.
+// Coloque este código logo abaixo das funções acima, ainda dentro do 'DOMContentLoaded'
 
-// Pega referências aos elementos do modal UMA VEZ
+// Lógica para fechar o modal
 const modal = document.getElementById('pick-modal');
-const pickForm = document.getElementById('pick-form');
-
-// Só adiciona os 'listeners' se o modal realmente existir na página
 if (modal) {
-    // Lógica para fechar o modal
     const closeModalBtn = modal.querySelector('.close-modal');
     closeModalBtn.addEventListener('click', () => modal.classList.remove('active'));
     modal.addEventListener('click', (e) => {
@@ -257,39 +251,40 @@ if (modal) {
             modal.classList.remove('active');
         }
     });
-
-    // Lógica para selecionar o vencedor (Camada 1)
-    document.querySelectorAll('.fighter-option').forEach(div => {
-        div.addEventListener('click', () => {
-            document.querySelectorAll('.fighter-option').forEach(d => d.classList.remove('selected'));
-            div.classList.add('selected');
-            document.getElementById('winner').value = div.dataset.fighterName;
-            document.getElementById('method-group').style.display = 'block'; // Mostra a próxima camada
-        });
-    });
-
-    // Lógica para selecionar o método (Camada 2)
-    document.querySelectorAll('.method-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.method-btn').forEach(b => b.classList.remove('selected'));
-            btn.classList.add('selected');
-            const method = btn.dataset.method;
-
-            // Mostra o grupo correto da Camada 3
-            if (method === 'Decision') {
-                document.getElementById('decision-type-group').style.display = 'block';
-                document.getElementById('round-group').style.display = 'none';
-            } else { // KO/TKO ou Submission
-                document.getElementById('decision-type-group').style.display = 'none';
-                document.getElementById('round-group').style.display = 'block';
-            }
-        });
-    });
 }
 
-// Lógica para o formulário ao ser enviado (ÚNICA E CORRETA)
-if (pickForm) {
-    pickForm.addEventListener('submit', async (e) => {
+// Lógica para selecionar o vencedor (Camada 1)
+document.querySelectorAll('.fighter-option').forEach(div => {
+    div.addEventListener('click', () => {
+        document.querySelectorAll('.fighter-option').forEach(d => d.classList.remove('selected'));
+        div.classList.add('selected');
+        document.getElementById('winner').value = div.dataset.fighterName;
+        document.getElementById('method-group').style.display = 'block'; // Mostra a próxima camada
+    });
+});
+
+// Lógica para selecionar o método (Camada 2)
+document.querySelectorAll('.method-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.method-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        const method = btn.dataset.method;
+
+        // Mostra o grupo correto da Camada 3
+        if (method === 'Decision') {
+            document.getElementById('decision-type-group').style.display = 'block';
+            document.getElementById('round-group').style.display = 'none';
+        } else { // KO/TKO ou Submission
+            document.getElementById('decision-type-group').style.display = 'none';
+            document.getElementById('round-group').style.display = 'block';
+        }
+    });
+});
+
+// Lógica para o formulário ao ser enviado (Passo 2 da Fase 1)
+const pickForm = document.getElementById('pick-form');
+if(pickForm){
+    pickForm.addEventListener('submit', (e) => {
         e.preventDefault();
         
         const fightId = parseInt(document.getElementById('fight-id').value);
@@ -297,12 +292,66 @@ if (pickForm) {
         const methodBtn = document.querySelector('.method-btn.selected');
         
         if (!winnerName || !methodBtn) {
-            return alert('Por favor, selecione o vencedor e o método da vitória.');
+            alert('Por favor, selecione o vencedor e o método da vitória.');
+            return;
+        }
+
+        // Simulação do próximo passo: por enquanto, vamos apenas mostrar no console.
+        // Na Fase 1, Passo 2, aqui chamaremos a API para salvar no banco de dados.
+        console.log(`Palpite para a luta ID ${fightId}:`);
+        console.log(`Vencedor: ${winnerName}`);
+        console.log(`Método: ${methodBtn.dataset.method}`);
+
+        alert('Palpite registrado no console! (Backend ainda não conectado)');
+        
+        // Fecha o modal e atualiza o card para mostrar que o palpite foi feito (simulação)
+        const modal = document.getElementById('pick-modal');
+        if(modal) modal.classList.remove('active');
+
+        // Aqui, futuramente, vamos recarregar os dados para mostrar o palpite salvo.
+    });
+}
+
+    // Lógica do formulário do modal
+    document.querySelectorAll('.fighter-option').forEach(div => {
+        div.addEventListener('click', () => {
+            document.querySelectorAll('.fighter-option').forEach(d => d.classList.remove('selected'));
+            div.classList.add('selected');
+            document.getElementById('winner').value = div.dataset.fighterName;
+            document.getElementById('method-group').style.display = 'block';
+        });
+    });
+
+    document.querySelectorAll('.method-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.method-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            const method = btn.dataset.method;
+            if (method === 'Decision') {
+                document.getElementById('decision-type-group').style.display = 'block';
+                document.getElementById('round-group').style.display = 'none';
+            } else {
+                document.getElementById('decision-type-group').style.display = 'none';
+                document.getElementById('round-group').style.display = 'block';
+            }
+        });
+    });
+
+    // Salvar palpite
+    pickForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const fightId = parseInt(document.getElementById('fight-id').value);
+        const winnerName = document.getElementById('winner').value;
+        const methodBtn = document.querySelector('.method-btn.selected');
+        
+        if (!winnerName || !methodBtn) {
+            alert('Por favor, selecione o vencedor e o método da vitória.');
+            return;
         }
 
         const method = methodBtn.dataset.method;
         let details = '';
-        let methodDisplay = '';
+        let methodDisplay = method;
 
         if (method === 'Decision') {
             const decisionType = pickForm.querySelector('[name="decision-type"]').value;
@@ -314,45 +363,36 @@ if (pickForm) {
             methodDisplay = `${method} no ${details}`;
         }
 
-        // Pega o token do localStorage
-        const token = localStorage.getItem('token');
-        if (!token) {
-            alert('Você precisa estar logado para salvar um palpite.');
-            return;
-        }
+        eventData.userPicks[fightId] = {
+            winnerName,
+            method,
+            details,
+            methodDisplay
+        };
 
-        try {
-            const response = await fetch(`${API_URL}/api/picks`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}` // Envia o token no cabeçalho
-                },
-                body: JSON.stringify({
-                    fightId,
-                    winnerName,
-                    method,
-                    details
-                }),
-            });
+        console.log('Palpite salvo:', eventData.userPicks[fightId]);
+        modal.classList.remove('active');
+        loadFights(); // Recarrega os cards para mostrar o palpite feito
+    });
 
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Não foi possível salvar o palpite.');
-            }
-
-            alert('Palpite salvo com sucesso!');
-            
-            // Atualiza o objeto de palpites localmente para refletir na tela
-            eventData.userPicks[fightId] = { winnerName, methodDisplay };
-            loadFights(); // Recarrega os cards para mostrar o palpite salvo
-
-            if(modal) modal.classList.remove('active');
-
-        } catch (error) {
-            console.error('Erro:', error);
-            alert(`Erro ao salvar palpite: ${error.message}`);
+    // Fechar modal
+    closeModalBtn.addEventListener('click', () => modal.classList.remove('active'));
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.classList.remove('active');
         }
     });
-}
+
+    // Adicionar listeners aos botões "Fazer Palpite"
+    function addPickButtonListeners() {
+        document.querySelectorAll('.btn-pick').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const fightId = parseInt(e.target.closest('.fight-card').dataset.fightId);
+                openPickModal(fightId);
+            });
+        });
+    }
+
+    // Iniciar
+    fetchEventData(1);
+});
