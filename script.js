@@ -60,19 +60,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchEventData(eventId) {
         try {
-            const response = await fetch(`${API_URL}/api/events/${eventId}`);
-            if (!response.ok) throw new Error('Não foi possível carregar os dados do evento.');
-            const data = await response.json();
-            
-            eventData.fights = data.fights;
-            
-            const eventHeader = document.querySelector('.event-header h2');
-            if(eventHeader) eventHeader.textContent = data.eventName;
+    const response = await fetch(`${API_URL}/api/events/${eventId}`);
+    if (!response.ok) throw new Error('Não foi possível carregar os dados do evento.');
+    const data = await response.json();
+    
+    // 1. Guarda os dados das lutas
+    eventData.fights = data.fights;
+    
+    // 2. Atualiza o título do evento na página
+    const eventHeader = document.querySelector('.event-header h2');
+    if(eventHeader) eventHeader.textContent = data.eventName;
 
-            startCountdown(data.picksDeadline);
-            populateBonusPicks(data.fights);
-            loadFights();
-        } catch (error) {
+    // 3. Inicia o countdown
+    startCountdown(data.picksDeadline);
+
+    // 4. CHAMA A FUNÇÃO PARA PREENCHER OS MENUS DE BÔNUS (ESTE É O PASSO CHAVE)
+    populateBonusPicks(data.fights);
+
+    // 5. Carrega os cards de luta na tela
+    loadFights();
+
+} catch (error) {
             console.error(error);
             if (mainContent) mainContent.innerHTML = `<h2 style="color:red; text-align:center;">${error.message}</h2>`;
         }
