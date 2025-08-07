@@ -50,6 +50,24 @@ const verifyToken = (req, res, next) => {
     });
 };
 
+// MIDDLEWARE PARA VERIFICAR SE O USUÁRIO É ADMIN
+const verifyAdmin = async (req, res, next) => {
+    const userId = req.user.id; // Isso vem do middleware verifyToken
+
+    try {
+        const userResult = await pool.query('SELECT is_admin FROM users WHERE id = $1', [userId]);
+        
+        // Se o usuário não for encontrado ou não for admin
+        if (userResult.rows.length === 0 || !userResult.rows[0].is_admin) {
+            return res.status(403).json({ error: 'Acesso negado. Rota exclusiva para administradores.' });
+        }
+
+        next(); // Se for admin, permite que a requisição continue
+    } catch (error) {
+        return res.status(500).json({ error: 'Erro interno do servidor.' });
+    }
+};
+
 // ROTA DE CADASTRO (REGISTER)
 app.post('/api/auth/register', async (req, res) => {
     const { username, email, password } = req.body;
@@ -332,6 +350,84 @@ app.post('/api/payment-webhook', async (req, res) => {
     } catch (error) {
         console.error('Erro no webhook:', error);
         res.sendStatus(500);
+    }
+});
+
+// ROTA DE ADMIN PARA SUBMETER OS RESULTADOS DE UMA LUTA
+// Protegida por verifyToken e verifyAdmin em sequência
+app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
+    const { fightId, winnerName, resultMethod, resultDetails } = req.body;
+
+    if (!fightId || !winnerName || !resultMethod || !resultDetails) {
+        return res.status(400).json({ error: 'Dados do resultado incompletos.' });
+    }
+
+    const client = await pool.connect(); // Inicia uma transação para garantir a integridade dos dados
+
+    try {
+        await client.query('BEGIN'); // Começa a transação
+
+        // 1. Atualiza o resultado real na tabela de lutas
+        await client.query(
+            'UPDATE fights SET winner_name = $1, result_method = $2, result_details = $3 WHERE id = $4',
+            [winnerName, resultMethod, resultDetails, fightId]
+        );
+
+        // 2. Busca todos os palpites para esta luta
+        const picksResult = await client.query('SELECT * FROM picks WHERE fight_id = $1', [fightId]);
+        const picks = picksResult.rows;
+
+        // 3. Itera sobre cada palpite para calcular os pontos
+        for (const pick of picks) {
+            let points = 0;
+            // Regra 1: Acertou o vencedor?
+            if (pick.predicted_winner_name === winnerName) {
+                points += 20; // Ganha 20 pontos
+                
+                // Regra 2: Se acertou o vencedor, acertou o método?
+                if (pick.predicted_method === resultMethod) {
+                    points += 15; // Ganha 15 pontos extras
+                    
+                    // Regra 3: Se acertou o método, acertou o detalhe?
+                    if (pick.predicted_details === resultDetails) {
+                        points += 10; // Ganha 10 pontos extras (acerto perfeito!)
+                    }
+                }
+            }
+            
+            // 4. Atualiza a pontuação daquele palpite específico no banco
+            await client.query('UPDATE picks SET points_awarded = $1 WHERE id = $2', [points, pick.id]);
+        }
+        
+        await client.query('COMMIT'); // Finaliza a transação com sucesso
+
+        res.json({ message: `Resultados da luta ${fightId} apurados e ${picks.length} palpites pontuados.` });
+
+    } catch (error) {
+        await client.query('ROLLBACK'); // Desfaz tudo se der algum erro no meio do caminho
+        console.error('Erro ao apurar resultados:', error);
+        res.status(500).json({ error: 'Erro ao apurar resultados.' });
+    } finally {
+        client.release(); // Libera a conexão com o banco
+    }
+});
+
+// ROTA DE ADMIN PARA VER TODOS OS PALPITES DE UM EVENTO
+app.get('/api/admin/event-picks/:eventId', verifyToken, verifyAdmin, async (req, res) => {
+    const { eventId } = req.params;
+    try {
+        const result = await pool.query(
+            `SELECT u.username, p.* 
+             FROM picks p 
+             JOIN users u ON p.user_id = u.id 
+             WHERE p.fight_id IN (SELECT id FROM fights WHERE event_id = $1)
+             ORDER BY u.username, p.fight_id`,
+            [eventId]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Erro ao buscar palpites do evento:', error);
+        res.status(500).json({ error: 'Erro ao buscar palpites.' });
     }
 });
 
