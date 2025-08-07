@@ -204,6 +204,7 @@ function loadFights() {
         });
     }
 
+// No script.js, substitua a addPickButtonListeners
 function addPickOrEditButtonListeners() {
     // Adiciona o "ouvinte" aos botões de fazer OU editar palpite
     document.querySelectorAll('.btn-pick, .btn-edit-pick').forEach(button => {
@@ -410,7 +411,15 @@ if(pickForm){
         }
     });
 
-
+    // Adicionar listeners aos botões "Fazer Palpite"
+    function addPickButtonListeners() {
+        document.querySelectorAll('.btn-pick').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const fightId = parseInt(e.target.closest('.fight-card').dataset.fightId);
+                openPickModal(fightId);
+            });
+        });
+    }
 
     // Iniciar
     fetchEventData(1);
