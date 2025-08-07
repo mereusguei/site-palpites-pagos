@@ -275,9 +275,9 @@ app.post('/api/create-payment', verifyToken, async (req, res) => {
                 ],
                 back_urls: {
                     // URLs para onde o usuário será redirecionado após o pagamento
-                    success: 'https://site-palpites-pagos.vercel.app/payment-success.html', // Criaremos esta página
-                    failure: 'https://site-palpites-pagos.vercel.app/', // Volta para a home em caso de falha
-                    pending: 'https://site-palpites-pagos.vercel.app/', // Volta para a home se estiver pendente
+                    success: 'https://mereusguei.github.io/payment-success.html', // Criaremos esta página
+                    failure: 'https://mereusguei.github.io/', // Volta para a home em caso de falha
+                    pending: 'https://mereusguei.github.io/', // Volta para a home se estiver pendente
                 },
                 auto_return: 'approved', // Retorna automaticamente em caso de sucesso
                 metadata: { // Dados extras que queremos associar ao pagamento
