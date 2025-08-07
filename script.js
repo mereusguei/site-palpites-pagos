@@ -3,185 +3,194 @@ const API_URL = 'https://site-palpites-pagos.vercel.app';
 
 // 
 document.addEventListener('DOMContentLoaded', () => {
-
+    
+    // --- SEÇÃO DE AUTENTICAÇÃO E NAVEGAÇÃO ---
     const userNavigation = document.getElementById('user-navigation');
-    const mainContent = document.querySelector('.container'); // Seleciona o container principal
+    const mainContent = document.querySelector('.container');
 
-    // Tenta pegar os dados do usuário salvos no navegador (no localStorage)
     const user = JSON.parse(localStorage.getItem('user'));
     const token = localStorage.getItem('token');
 
-    // LÓGICA DE AUTENTICAÇÃO
-    if (user && token) {
-        // --- CASO O USUÁRIO ESTEJA LOGADO ---
+    // Esta lógica só roda se estivermos na página principal (index.html)
+    if (userNavigation) { 
+        if (user && token) {
+            // Cenário: Usuário está LOGADO
+            userNavigation.innerHTML = `
+                <div class="user-profile">
+                    <img src="https://i.pravatar.cc/40?u=${user.username}" alt="Foto do Usuário">
+                    <span>Olá, ${user.username}</span>
+                </div>
+                <button id="logout-btn" class="btn btn-logout">Sair</button>
+            `;
+            
+            // Adiciona funcionalidade ao botão de sair
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                localStorage.removeItem('user');
+                localStorage.removeItem('token');
+                alert('Você saiu.');
+                window.location.reload();
+            });
 
-        // 1. Preenche a navegação com os dados do usuário
-        userNavigation.innerHTML = `
-            <div class="user-profile">
-                <img src="https://i.pravatar.cc/40?u=${user.username}" alt="Foto do Usuário">
-                <span>Olá, ${user.username}</span>
-            </div>
-            <button id="logout-btn" class="btn btn-logout">Sair</button>
-        `;
-
-        // 2. Adiciona a funcionalidade ao botão de logout
-        const logoutBtn = document.getElementById('logout-btn');
-        logoutBtn.addEventListener('click', () => {
-            localStorage.removeItem('user');
-            localStorage.removeItem('token');
-            alert('Você saiu.');
-            window.location.reload(); // Recarrega a página
-        });
-
-        // 3. Busca os dados do evento (pois o usuário está autorizado)
-        fetchEventData(1);
-
-    } else {
-        // --- CASO O USUÁRIO NÃO ESTEJA LOGADO ---
-        
-        // 1. Preenche a navegação com botões de Login e Cadastro
-        userNavigation.innerHTML = `
-            <div class="auth-buttons">
-                <a href="login.html" class="btn">Login</a>
-                <a href="register.html" class="btn btn-primary">Cadastro</a>
-            </div>
-        `;
-
-        // 2. Substitui todo o conteúdo principal por uma mensagem de bloqueio
-        mainContent.innerHTML = `
-            <div class="auth-container" style="text-align: center;">
-                <h2>Bem-vindo ao Octagon Oracle!</h2>
-                <p>Por favor, faça login ou cadastre-se para ver os eventos e fazer seus palpites.</p>
-            </div>
-        `;
+        } else {
+            // Cenário: Usuário está DESLOGADO
+            userNavigation.innerHTML = `
+                <div class="auth-buttons">
+                    <a href="login.html" class="btn">Login</a>
+                    <a href="register.html" class="btn btn-primary">Cadastro</a>
+                </div>
+            `;
+        }
     }
 
-// Armazenará os dados vindos da API
-let eventData = {
-    fights: [],
-    userPicks: {}
-};
-
-// Função para buscar os dados do evento da nossa API
-async function fetchEventData(eventId) {
-    try {
-        const response = await fetch(`${API_URL}/api/events/${eventId}`);
-        if (!response.ok) {
-            throw new Error('Não foi possível carregar os dados do evento.');
+    // --- SEÇÃO DE PROTEÇÃO DE CONTEÚDO ---
+    // Esta lógica só roda se o elemento .container existir na página
+    if (mainContent) {
+        if (user && token) {
+            // Se o container existe E o usuário está logado, busca os dados do evento.
+            fetchEventData(1);
+        } else {
+            // Se o container existe E o usuário NÃO está logado, mostra a mensagem de bloqueio.
+            mainContent.innerHTML = `
+                <div class="auth-container" style="text-align: center;">
+                    <h2>Bem-vindo ao Octagon Oracle!</h2>
+                    <p>Por favor, faça login ou cadastre-se para ver os eventos e fazer seus palpites.</p>
+                </div>
+            `;
         }
-        const data = await response.json();
-        
-        // Atualiza os dados do evento
-        eventData.fights = data.fights;
-
-        // Atualiza o timer!
-        startCountdown(data.picksDeadline);
-
-        // Popula os dropdowns de bônus!
-        populateBonusPicks(data.fights);
-
-        // Carrega os cards de luta na tela
-        loadFights();
-
-    } catch (error) {
-        console.error(error);
-        document.querySelector('.container').innerHTML = `<h2 style="color:red; text-align:center;">${error.message}</h2>`;
     }
-}
 
-// Função para o Countdown Real
-function startCountdown(deadline) {
-    const countdownElement = document.getElementById('countdown');
-    const deadlineTime = new Date(deadline).getTime();
 
-    const interval = setInterval(() => {
-        const now = new Date().getTime();
-        const distance = deadlineTime - now;
+    // --- SEÇÃO DE FUNÇÕES GLOBAIS ---
+    // Todas as funções que o site precisa para funcionar.
 
-        if (distance < 0) {
-            clearInterval(interval);
-            countdownElement.innerHTML = "PRAZO ENCERRADO";
-            // AQUI VOCÊ DEVE DESABILITAR TODOS OS BOTÕES DE PALPITE
-            document.querySelectorAll('.btn-pick, .btn-save-all').forEach(btn => btn.disabled = true);
-            return;
+    let eventData = {
+        fights: [],
+        userPicks: {}
+    };
+
+    async function fetchEventData(eventId) {
+        try {
+            const response = await fetch(`${API_URL}/api/events/${eventId}`);
+            if (!response.ok) {
+                throw new Error('Não foi possível carregar os dados do evento.');
+            }
+            const data = await response.json();
+            
+            eventData.fights = data.fights;
+            
+            // Atualiza os elementos da página
+            const eventHeader = document.querySelector('.event-header h2');
+            if(eventHeader) eventHeader.textContent = data.eventName;
+
+            startCountdown(data.picksDeadline);
+            populateBonusPicks(data.fights);
+
+            // Carrega os cards de luta na tela
+            loadFights();
+
+        } catch (error) {
+            console.error(error);
+            if (mainContent) {
+                 mainContent.innerHTML = `<h2 style="color:red; text-align:center;">${error.message}</h2>`;
+            }
         }
+    }
 
-        const days = Math.floor(distance / (1000 * 60 * 60 * 24));
-        const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((distance % (1000 * 60)) / 1000);
-
-        countdownElement.innerHTML = `${days}d ${hours}h ${minutes}m ${seconds}s`;
-    }, 1000);
-}
-
-// Função para popular os dropdowns de bônus
-function populateBonusPicks(fights) {
-    const fightSelect = document.getElementById('fight-of-night');
-    const perfSelect = document.getElementById('performance-of-night');
-
-    fightSelect.innerHTML = '<option value="">Selecione a luta...</option>';
-    perfSelect.innerHTML = '<option value="">Selecione o lutador...</option>';
-
-    const allFighters = new Set(); // Usamos Set para evitar nomes duplicados
-
-    fights.forEach(fight => {
-        // Adiciona a luta ao dropdown de "Luta da Noite"
-        const fightOption = document.createElement('option');
-        fightOption.value = fight.id;
-        fightOption.textContent = `${fight.fighter1_name} vs ${fight.fighter2_name}`;
-        fightSelect.appendChild(fightOption);
-
-        // Adiciona os lutadores ao Set
-        allFighters.add(fight.fighter1_name);
-        allFighters.add(fight.fighter2_name);
-    });
-
-    // Adiciona cada lutador ao dropdown de "Performance da Noite"
-    allFighters.forEach(fighterName => {
-        const perfOption = document.createElement('option');
-        perfOption.value = fighterName;
-        perfOption.textContent = fighterName;
-        perfSelect.appendChild(perfOption);
-    });
-}
-
-    const fightCardGrid = document.getElementById('fight-card-grid');
-    const modal = document.getElementById('pick-modal');
-    const closeModalBtn = document.querySelector('.close-modal');
-    const pickForm = document.getElementById('pick-form');
-    
-    // Carregar lutas na página
     function loadFights() {
+        const fightCardGrid = document.getElementById('fight-card-grid');
+        if (!fightCardGrid) return; // Não faz nada se o grid não existir na página
+
         fightCardGrid.innerHTML = '';
         eventData.fights.forEach(fight => {
             const pick = eventData.userPicks[fight.id];
             const fightCard = `
-    <div class="fight-card" data-fight-id="${fight.id}">
-        <div class="fighters">
-            <div class="fighter">
-                <img src="${fight.fighter1_img || 'https://via.placeholder.com/80'}" alt="${fight.fighter1_name}">
-                <h4>${fight.fighter1_name}</h4>
-                <span>${fight.fighter1_record || ''}</span>
-            </div>
-            <span class="vs">VS</span>
-            <div class="fighter">
-                <img src="${fight.fighter2_img || 'https://via.placeholder.com/80'}" alt="${fight.fighter2_name}">
-                <h4>${fight.fighter2_name}</h4>
-                <span>${fight.fighter2_record || ''}</span>
-            </div>
-        </div>
-        <div class="pick-status">
-            ${pick ? `<p class="palpite-feito">Palpite: ${pick.winnerName} por ${pick.methodDisplay}</p>` : '<button class="btn btn-pick">Fazer Palpite</button>'}
-        </div>
-    </div>
-`;
+                <div class="fight-card" data-fight-id="${fight.id}">
+                    <div class="fighters">
+                        <div class="fighter">
+                            <img src="${fight.fighter1_img || 'https://via.placeholder.com/80'}" alt="${fight.fighter1_name}">
+                            <h4>${fight.fighter1_name}</h4>
+                            <span>${fight.fighter1_record || ''}</span>
+                        </div>
+                        <span class="vs">VS</span>
+                        <div class="fighter">
+                            <img src="${fight.fighter2_img || 'https://via.placeholder.com/80'}" alt="${fight.fighter2_name}">
+                            <h4>${fight.fighter2_name}</h4>
+                            <span>${fight.fighter2_record || ''}</span>
+                        </div>
+                    </div>
+                    <div class="pick-status">
+                        ${pick ? `<p class="palpite-feito">Palpite: ${pick.winnerName} por ${pick.methodDisplay}</p>` : '<button class="btn btn-pick">Fazer Palpite</button>'}
+                    </div>
+                </div>
+            `;
             fightCardGrid.insertAdjacentHTML('beforeend', fightCard);
         });
         addPickButtonListeners();
     }
-    
-    // Abrir modal de palpite
+
+    function startCountdown(deadline) {
+        const countdownElement = document.getElementById('countdown');
+        if(!countdownElement) return; // Não faz nada se o elemento não existir
+
+        const deadlineTime = new Date(deadline).getTime();
+
+        const interval = setInterval(() => {
+            const now = new Date().getTime();
+            const distance = deadlineTime - now;
+
+            if (distance < 0) {
+                clearInterval(interval);
+                countdownElement.innerHTML = "PRAZO ENCERRADO";
+                document.querySelectorAll('.btn-pick, .btn-save-all').forEach(btn => btn.disabled = true);
+                return;
+            }
+
+            const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+            countdownElement.innerHTML = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+        }, 1000);
+    }
+
+    function populateBonusPicks(fights) {
+        const fightSelect = document.getElementById('fight-of-night');
+        const perfSelect = document.getElementById('performance-of-night');
+        if(!fightSelect || !perfSelect) return; // Não faz nada se não estiver na página certa
+
+        fightSelect.innerHTML = '<option value="">Selecione a luta...</option>';
+        perfSelect.innerHTML = '<option value="">Selecione o lutador...</option>';
+
+        const allFighters = new Set();
+
+        fights.forEach(fight => {
+            const fightOption = document.createElement('option');
+            fightOption.value = fight.id;
+            fightOption.textContent = `${fight.fighter1_name} vs ${fight.fighter2_name}`;
+            fightSelect.appendChild(fightOption);
+
+            allFighters.add(fight.fighter1_name);
+            allFighters.add(fight.fighter2_name);
+        });
+
+        allFighters.forEach(fighterName => {
+            const perfOption = document.createElement('option');
+            perfOption.value = fighterName;
+            perfOption.textContent = fighterName;
+            perfSelect.appendChild(perfOption);
+        });
+    }
+
+    function addPickButtonListeners() {
+        document.querySelectorAll('.btn-pick').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const fightId = parseInt(e.target.closest('.fight-card').dataset.fightId);
+                openPickModal(fightId);
+            });
+        });
+    }
+
     function openPickModal(fightId) {
         const fight = eventData.fights.find(f => f.id === fightId);
         if (!fight) return;
