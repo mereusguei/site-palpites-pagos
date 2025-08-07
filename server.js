@@ -16,9 +16,6 @@ const PORT = process.env.PORT || 3000; // O Render.com vai nos dar uma porta, se
 // Configura a conexão com o banco de dados Neon
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: {
-        rejectUnauthorized: false
-    }
 });
 
 // Middlewares (configurações do servidor)
@@ -432,7 +429,13 @@ app.get('/api/admin/event-picks/:eventId', verifyToken, verifyAdmin, async (req,
 });
 
 
-// Inicia o servidor para ele ficar "ouvindo" por requisições
-app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+// Inicia o servidor e testa a conexão com o banco
+app.listen(PORT, async () => {
+    try {
+        await pool.query('SELECT NOW()'); // Tenta executar uma consulta simples
+        console.log(`Servidor rodando na porta ${PORT} e conectado ao banco de dados com sucesso.`);
+    } catch (error) {
+        console.error('*** FALHA AO CONECTAR AO BANCO DE DADOS ***');
+        console.error(error);
+    }
 });
