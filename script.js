@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
 
     // URL da sua API (quando estiver rodando localmente)
-const API_URL = 'http://localhost:3000';
+const API_URL = 'https://site-palpites-pagos.vercel.app';
 
 // Armazenará os dados vindos da API
 let eventData = {
