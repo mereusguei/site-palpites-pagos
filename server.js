@@ -27,6 +27,24 @@ const jwt = require('jsonwebtoken');
 // Adicione uma chave secreta para o JWT. No mundo real, isso viria de uma variável de ambiente.
 const JWT_SECRET = 'sua-chave-secreta-super-dificil-de-adivinhar-123';
 
+// MIDDLEWARE PARA VERIFICAR O TOKEN
+const verifyToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; // Formato "Bearer TOKEN"
+
+    if (!token) {
+        return res.sendStatus(401); // Unauthorized (Não autorizado)
+    }
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) {
+            return res.sendStatus(403); // Forbidden (Token inválido/expirado)
+        }
+        req.user = user; // Adiciona os dados do usuário (id, username) à requisição
+        next(); // Passa para a próxima função (a rota real)
+    });
+};
+
 // ROTA DE CADASTRO (REGISTER)
 app.post('/api/auth/register', async (req, res) => {
     const { username, email, password } = req.body;
@@ -140,6 +158,44 @@ app.get('/api/events/:id', async (req, res) => {
     } catch (error) {
         console.error('Erro ao buscar dados do evento:', error);
         res.status(500).json({ error: 'Erro interno do servidor.' });
+    }
+});
+
+// ROTA PARA SALVAR/ATUALIZAR UM PALPITE
+// Usamos o middleware verifyToken para proteger esta rota
+app.post('/api/picks', verifyToken, async (req, res) => {
+    const userId = req.user.id; // Pegamos o ID do usuário do token verificado
+    const { fightId, winnerName, method, details } = req.body;
+
+    if (!fightId || !winnerName || !method || !details) {
+        return res.status(400).json({ error: 'Dados do palpite incompletos.' });
+    }
+
+    try {
+        // A mágica do "UPSERT": INSERT... ON CONFLICT... UPDATE
+        // Isso tenta INSERIR. Se já existir um palpite para esse user/fight (CONFLITO), ele ATUALIZA.
+        const query = `
+            INSERT INTO picks (user_id, fight_id, predicted_winner_name, predicted_method, predicted_details)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (user_id, fight_id) 
+            DO UPDATE SET
+                predicted_winner_name = EXCLUDED.predicted_winner_name,
+                predicted_method = EXCLUDED.predicted_method,
+                predicted_details = EXCLUDED.predicted_details
+            RETURNING *;
+        `;
+
+        const values = [userId, fightId, winnerName, method, details];
+        const result = await pool.query(query, values);
+
+        res.status(201).json({ 
+            message: 'Palpite salvo com sucesso!', 
+            pick: result.rows[0] 
+        });
+
+    } catch (error) {
+        console.error('Erro ao salvar o palpite:', error);
+        res.status(500).json({ error: 'Erro interno do servidor ao salvar o palpite.' });
     }
 });
 
