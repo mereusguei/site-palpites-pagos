@@ -112,7 +112,7 @@ async function fetchEventData(eventId) {
 }
 
 // função responsável por desenhar os cards
-function loadFights() {
+    function loadFights() {
     const fightCardGrid = document.getElementById('fight-card-grid');
     if (!fightCardGrid) return;
 
@@ -136,9 +136,19 @@ function loadFights() {
         const fightCard = `
             <div class="fight-card" data-fight-id="${fight.id}">
                 <div class="fighters">
-                    ... (código dos lutadores como antes) ...
-                </div>
-                <div class="pick-status">
+                        <div class="fighter">
+                            <img src="${fight.fighter1_img || 'https://via.placeholder.com/80'}" alt="${fight.fighter1_name}">
+                            <h4>${fight.fighter1_name}</h4>
+                            <span>${fight.fighter1_record || ''}</span>
+                        </div>
+                        <span class="vs">VS</span>
+                        <div class="fighter">
+                            <img src="${fight.fighter2_img || 'https://via.placeholder.com/80'}" alt="${fight.fighter2_name}">
+                            <h4>${fight.fighter2_name}</h4>
+                            <span>${fight.fighter2_record || ''}</span>
+                        </div>
+                    </div>
+                    <div class="pick-status">
                     ${pickDisplay}
                     <button class="btn ${buttonClass}">${buttonText}</button>
                 </div>
@@ -204,7 +214,7 @@ function loadFights() {
         });
     }
 
-// No script.js, substitua a addPickButtonListeners
+// função que lida com ambos os botões
 function addPickOrEditButtonListeners() {
     // Adiciona o "ouvinte" aos botões de fazer OU editar palpite
     document.querySelectorAll('.btn-pick, .btn-edit-pick').forEach(button => {
