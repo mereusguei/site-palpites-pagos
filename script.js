@@ -183,38 +183,134 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function addPickButtonListeners() {
-        document.querySelectorAll('.btn-pick').forEach(button => {
-            button.addEventListener('click', (e) => {
-                const fightId = parseInt(e.target.closest('.fight-card').dataset.fightId);
-                openPickModal(fightId);
-            });
+    // Adiciona o "ouvinte" a cada botão "Fazer Palpite"
+    document.querySelectorAll('.btn-pick').forEach(button => {
+        button.addEventListener('click', (e) => {
+            // Pega o ID da luta do card onde o botão foi clicado
+            const fightId = parseInt(e.target.closest('.fight-card').dataset.fightId);
+            openPickModal(fightId);
         });
+    });
+}
+
+function openPickModal(fightId) {
+    // Seleciona os elementos do modal
+    const modal = document.getElementById('pick-modal');
+    const pickForm = document.getElementById('pick-form');
+    const modalTitle = document.getElementById('modal-title');
+    const fighter1Div = document.getElementById('modal-fighter1');
+    const fighter2Div = document.getElementById('modal-fighter2');
+    const methodGroup = document.getElementById('method-group');
+    const roundGroup = document.getElementById('round-group');
+    const decisionTypeGroup = document.getElementById('decision-type-group');
+
+    // Encontra os dados da luta específica no nosso objeto eventData
+    const fight = eventData.fights.find(f => f.id === fightId);
+    if (!fight) {
+        console.error('Luta não encontrada!');
+        return;
     }
 
-    function openPickModal(fightId) {
-        const fight = eventData.fights.find(f => f.id === fightId);
-        if (!fight) return;
+    // --- PREPARA O MODAL PARA SER EXIBIDO ---
+    
+    // 1. Reseta o formulário e esconde os campos condicionais
+    pickForm.reset();
+    methodGroup.style.display = 'none';
+    roundGroup.style.display = 'none';
+    decisionTypeGroup.style.display = 'none';
+    document.querySelectorAll('.fighter-option, .method-btn').forEach(el => el.classList.remove('selected'));
 
-        // Resetar formulário
-        pickForm.reset();
-        document.getElementById('method-group').style.display = 'none';
-        document.getElementById('round-group').style.display = 'none';
-        document.getElementById('decision-type-group').style.display = 'none';
-        document.querySelectorAll('.fighter-option, .method-btn').forEach(el => el.classList.remove('selected'));
+    // 2. Preenche os dados da luta
+    document.getElementById('fight-id').value = fight.id;
+    modalTitle.textContent = `Palpite para: ${fight.fighter1_name} vs ${fight.fighter2_name}`;
+    
+    // Lutador 1
+    fighter1Div.innerHTML = `<img src="${fight.fighter1_img || 'https://via.placeholder.com/80'}" alt="${fight.fighter1_name}"><h4>${fight.fighter1_name}</h4>`;
+    fighter1Div.dataset.fighterName = fight.fighter1_name;
 
-        document.getElementById('fight-id').value = fight.id;
-        document.getElementById('modal-title').textContent = `Palpite para: ${fight.fighter1} vs ${fight.fighter2}`;
-        
-        const fighter1Div = document.getElementById('modal-fighter1');
-        fighter1Div.innerHTML = `<img src="${fight.img1}" alt="${fight.fighter1}"><h4>${fight.fighter1}</h4>`;
-        fighter1Div.dataset.fighterName = fight.fighter1;
+    // Lutador 2
+    fighter2Div.innerHTML = `<img src="${fight.fighter2_img || 'https://via.placeholder.com/80'}" alt="${fight.fighter2_name}"><h4>${fight.fighter2_name}</h4>`;
+    fighter2Div.dataset.fighterName = fight.fighter2_name;
 
-        const fighter2Div = document.getElementById('modal-fighter2');
-        fighter2Div.innerHTML = `<img src="${fight.img2}" alt="${fight.fighter2}"><h4>${fight.fighter2}</h4>`;
-        fighter2Div.dataset.fighterName = fight.fighter2;
-
+    // 3. Torna o modal visível
+    if (modal) {
         modal.classList.add('active');
     }
+}
+
+// --- ADICIONA A LÓGICA DE INTERAÇÃO DO MODAL ---
+// Coloque este código logo abaixo das funções acima, ainda dentro do 'DOMContentLoaded'
+
+// Lógica para fechar o modal
+const modal = document.getElementById('pick-modal');
+if (modal) {
+    const closeModalBtn = modal.querySelector('.close-modal');
+    closeModalBtn.addEventListener('click', () => modal.classList.remove('active'));
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.classList.remove('active');
+        }
+    });
+}
+
+// Lógica para selecionar o vencedor (Camada 1)
+document.querySelectorAll('.fighter-option').forEach(div => {
+    div.addEventListener('click', () => {
+        document.querySelectorAll('.fighter-option').forEach(d => d.classList.remove('selected'));
+        div.classList.add('selected');
+        document.getElementById('winner').value = div.dataset.fighterName;
+        document.getElementById('method-group').style.display = 'block'; // Mostra a próxima camada
+    });
+});
+
+// Lógica para selecionar o método (Camada 2)
+document.querySelectorAll('.method-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.method-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        const method = btn.dataset.method;
+
+        // Mostra o grupo correto da Camada 3
+        if (method === 'Decision') {
+            document.getElementById('decision-type-group').style.display = 'block';
+            document.getElementById('round-group').style.display = 'none';
+        } else { // KO/TKO ou Submission
+            document.getElementById('decision-type-group').style.display = 'none';
+            document.getElementById('round-group').style.display = 'block';
+        }
+    });
+});
+
+// Lógica para o formulário ao ser enviado (Passo 2 da Fase 1)
+const pickForm = document.getElementById('pick-form');
+if(pickForm){
+    pickForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        
+        const fightId = parseInt(document.getElementById('fight-id').value);
+        const winnerName = document.getElementById('winner').value;
+        const methodBtn = document.querySelector('.method-btn.selected');
+        
+        if (!winnerName || !methodBtn) {
+            alert('Por favor, selecione o vencedor e o método da vitória.');
+            return;
+        }
+
+        // Simulação do próximo passo: por enquanto, vamos apenas mostrar no console.
+        // Na Fase 1, Passo 2, aqui chamaremos a API para salvar no banco de dados.
+        console.log(`Palpite para a luta ID ${fightId}:`);
+        console.log(`Vencedor: ${winnerName}`);
+        console.log(`Método: ${methodBtn.dataset.method}`);
+
+        alert('Palpite registrado no console! (Backend ainda não conectado)');
+        
+        // Fecha o modal e atualiza o card para mostrar que o palpite foi feito (simulação)
+        const modal = document.getElementById('pick-modal');
+        if(modal) modal.classList.remove('active');
+
+        // Aqui, futuramente, vamos recarregar os dados para mostrar o palpite salvo.
+    });
+}
 
     // Lógica do formulário do modal
     document.querySelectorAll('.fighter-option').forEach(div => {
