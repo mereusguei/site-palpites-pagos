@@ -132,25 +132,38 @@ app.get('/', (req, res) => {
 
 // Rota para buscar os dados de um evento (ex: evento com id=1)
 // Isso resolve o problema do seu timer e dos dropdowns dinâmicos
-app.get('/api/events/:id', async (req, res) => {
-    const { id } = req.params;
+// Rota para buscar os dados de um evento E OS PALPITES DO USUÁRIO LOGADO
+app.get('/api/events/:id', verifyToken, async (req, res) => {
+    const { id: eventId } = req.params;
+    const userId = req.user.id; // Pegamos o ID do usuário logado do token
+
     try {
-        // Busca os dados do evento
-        const eventResult = await pool.query('SELECT * FROM events WHERE id = $1', [id]);
+        // Busca dados do evento
+        const eventResult = await pool.query('SELECT * FROM events WHERE id = $1', [eventId]);
         if (eventResult.rows.length === 0) {
             return res.status(404).json({ error: 'Evento não encontrado.' });
         }
         const event = eventResult.rows[0];
 
-        // Busca as lutas associadas a esse evento
-        const fightsResult = await pool.query('SELECT * FROM fights WHERE event_id = $1 ORDER BY id', [id]);
+        // Busca as lutas do evento
+        const fightsResult = await pool.query('SELECT * FROM fights WHERE event_id = $1 ORDER BY id', [eventId]);
         const fights = fightsResult.rows;
 
-        // Combina tudo em um único objeto de resposta
+        // NOVA PARTE: Busca os palpites que este usuário já fez para este evento
+        const picksResult = await pool.query('SELECT * FROM picks WHERE user_id = $1 AND fight_id IN (SELECT id FROM fights WHERE event_id = $2)', [userId, eventId]);
+        
+        // Transforma o array de palpites em um objeto para fácil acesso no frontend: { fightId: pickData }
+        const userPicks = picksResult.rows.reduce((acc, pick) => {
+            acc[pick.fight_id] = pick;
+            return acc;
+        }, {});
+
+        // Combina tudo na resposta
         const responseData = {
             eventName: event.name,
-            picksDeadline: event.picks_deadline, // Envia o prazo final para o frontend
-            fights: fights
+            picksDeadline: event.picks_deadline,
+            fights: fights,
+            userPicks: userPicks // Envia os palpites do usuário!
         };
 
         res.json(responseData);

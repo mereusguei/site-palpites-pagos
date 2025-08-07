@@ -68,65 +68,87 @@ document.addEventListener('DOMContentLoaded', () => {
         userPicks: {}
     };
 
-    async function fetchEventData(eventId) {
-        try {
-            const response = await fetch(`${API_URL}/api/events/${eventId}`);
-            if (!response.ok) {
-                throw new Error('Não foi possível carregar os dados do evento.');
+// No script.js, substitua a função fetchEventData
+async function fetchEventData(eventId) {
+    // Pega o token para enviar na requisição
+    const token = localStorage.getItem('token');
+    if (!token) return; // Se não tem token, não faz nada
+
+    try {
+        const response = await fetch(`${API_URL}/api/events/${eventId}`, {
+            headers: {
+                'Authorization': `Bearer ${token}` // Adiciona o cabeçalho de autorização
             }
-            const data = await response.json();
-            
-            eventData.fights = data.fights;
-            
-            // Atualiza os elementos da página
-            const eventHeader = document.querySelector('.event-header h2');
-            if(eventHeader) eventHeader.textContent = data.eventName;
+        });
 
-            startCountdown(data.picksDeadline);
-            populateBonusPicks(data.fights);
-
-            // Carrega os cards de luta na tela
-            loadFights();
-
-        } catch (error) {
-            console.error(error);
-            if (mainContent) {
-                 mainContent.innerHTML = `<h2 style="color:red; text-align:center;">${error.message}</h2>`;
+        if (!response.ok) {
+            // Se o token for inválido, por exemplo, desloga o usuário
+            if (response.status === 401 || response.status === 403) {
+                localStorage.removeItem('user');
+                localStorage.removeItem('token');
+                window.location.reload();
             }
+            throw new Error('Não foi possível carregar os dados do evento.');
+        }
+        const data = await response.json();
+        
+        // Armazena os dados recebidos, incluindo os palpites do usuário
+        eventData.fights = data.fights;
+        eventData.userPicks = data.userPicks; // Armazena os palpites!
+        
+        // ... resto da função como antes (startCountdown, populateBonusPicks, etc) ...
+        const eventHeader = document.querySelector('.event-header h2');
+        if(eventHeader) eventHeader.textContent = data.eventName;
+        startCountdown(data.picksDeadline);
+        populateBonusPicks(data.fights);
+        loadFights(); // Chama a função para renderizar os cards
+
+    } catch (error) {
+        console.error(error);
+        if (mainContent) {
+             mainContent.innerHTML = `<h2 style="color:red; text-align:center;">${error.message}</h2>`;
         }
     }
+}
 
-    function loadFights() {
-        const fightCardGrid = document.getElementById('fight-card-grid');
-        if (!fightCardGrid) return; // Não faz nada se o grid não existir na página
+// função responsável por desenhar os cards
+function loadFights() {
+    const fightCardGrid = document.getElementById('fight-card-grid');
+    if (!fightCardGrid) return;
 
-        fightCardGrid.innerHTML = '';
-        eventData.fights.forEach(fight => {
-            const pick = eventData.userPicks[fight.id];
-            const fightCard = `
-                <div class="fight-card" data-fight-id="${fight.id}">
-                    <div class="fighters">
-                        <div class="fighter">
-                            <img src="${fight.fighter1_img || 'https://via.placeholder.com/80'}" alt="${fight.fighter1_name}">
-                            <h4>${fight.fighter1_name}</h4>
-                            <span>${fight.fighter1_record || ''}</span>
-                        </div>
-                        <span class="vs">VS</span>
-                        <div class="fighter">
-                            <img src="${fight.fighter2_img || 'https://via.placeholder.com/80'}" alt="${fight.fighter2_name}">
-                            <h4>${fight.fighter2_name}</h4>
-                            <span>${fight.fighter2_record || ''}</span>
-                        </div>
-                    </div>
-                    <div class="pick-status">
-                        ${pick ? `<p class="palpite-feito">Palpite: ${pick.winnerName} por ${pick.methodDisplay}</p>` : '<button class="btn btn-pick">Fazer Palpite</button>'}
-                    </div>
+    fightCardGrid.innerHTML = '';
+    eventData.fights.forEach(fight => {
+        // Verifica se existe um palpite para esta luta no objeto que recebemos da API
+        const pick = eventData.userPicks[fight.id];
+        
+        // Define o texto do botão e a classe com base na existência de um palpite
+        const buttonText = pick ? 'Alterar Palpite' : 'Fazer Palpite';
+        const buttonClass = pick ? 'btn-edit-pick' : 'btn-pick';
+        
+        let pickDisplay = '';
+        if (pick) {
+            const methodDisplay = pick.predicted_method === 'Decision' ? 
+                `Decisão ${pick.predicted_details}` : 
+                `${pick.predicted_method} no ${pick.predicted_details}`;
+            pickDisplay = `<p class="palpite-feito">Seu palpite: ${pick.predicted_winner_name} por ${methodDisplay}</p>`;
+        }
+
+        const fightCard = `
+            <div class="fight-card" data-fight-id="${fight.id}">
+                <div class="fighters">
+                    ... (código dos lutadores como antes) ...
                 </div>
-            `;
-            fightCardGrid.insertAdjacentHTML('beforeend', fightCard);
-        });
-        addPickButtonListeners();
-    }
+                <div class="pick-status">
+                    ${pickDisplay}
+                    <button class="btn ${buttonClass}">${buttonText}</button>
+                </div>
+            </div>
+        `;
+        fightCardGrid.insertAdjacentHTML('beforeend', fightCard);
+    });
+    // Renomeamos a função para adicionar listeners a ambos os tipos de botão
+    addPickOrEditButtonListeners();
+}
 
     function startCountdown(deadline) {
         const countdownElement = document.getElementById('countdown');
@@ -182,12 +204,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function addPickButtonListeners() {
-    // Adiciona o "ouvinte" a cada botão "Fazer Palpite"
-    document.querySelectorAll('.btn-pick').forEach(button => {
+function addPickOrEditButtonListeners() {
+    // Adiciona o "ouvinte" aos botões de fazer OU editar palpite
+    document.querySelectorAll('.btn-pick, .btn-edit-pick').forEach(button => {
         button.addEventListener('click', (e) => {
-            // Pega o ID da luta do card onde o botão foi clicado
             const fightId = parseInt(e.target.closest('.fight-card').dataset.fightId);
+            // Ambos os botões abrem o mesmo modal
             openPickModal(fightId);
         });
     });
@@ -388,15 +410,7 @@ if(pickForm){
         }
     });
 
-    // Adicionar listeners aos botões "Fazer Palpite"
-    function addPickButtonListeners() {
-        document.querySelectorAll('.btn-pick').forEach(button => {
-            button.addEventListener('click', (e) => {
-                const fightId = parseInt(e.target.closest('.fight-card').dataset.fightId);
-                openPickModal(fightId);
-            });
-        });
-    }
+
 
     // Iniciar
     fetchEventData(1);
