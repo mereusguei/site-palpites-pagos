@@ -409,22 +409,67 @@ app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
     }
 });
 
-// ROTA DE ADMIN PARA VER TODOS OS PALPITES DE UM EVENTO
-app.get('/api/admin/event-picks/:eventId', verifyToken, verifyAdmin, async (req, res) => {
-    const { eventId } = req.params;
+// ROTA DE ADMIN PARA VER TODOS OS PALPITES, AGRUPADOS POR EVENTO E USUÁRIO
+app.get('/api/admin/all-picks', verifyToken, verifyAdmin, async (req, res) => {
     try {
-        const result = await pool.query(
-            `SELECT u.username, p.* 
-             FROM picks p 
-             JOIN users u ON p.user_id = u.id 
-             WHERE p.fight_id IN (SELECT id FROM fights WHERE event_id = $1)
-             ORDER BY u.username, p.fight_id`,
-            [eventId]
-        );
-        res.json(result.rows);
+        // 1. Busca todos os eventos, palpites e usuários de uma vez
+        const query = `
+            SELECT 
+                e.id as event_id, e.name as event_name,
+                u.id as user_id, u.username,
+                p.id as pick_id, p.fight_id, p.predicted_winner_name, 
+                p.predicted_method, p.predicted_details, p.points_awarded,
+                f.winner_name as real_winner, f.result_method as real_method, f.result_details as real_details
+            FROM events e
+            JOIN fights f ON e.id = f.event_id
+            JOIN picks p ON f.id = p.fight_id
+            JOIN users u ON p.user_id = u.id
+            ORDER BY e.id, u.username, p.fight_id;
+        `;
+        const allData = await pool.query(query);
+
+        // 2. Processa e agrupa os dados
+        const results = {};
+        for (const row of allData.rows) {
+            // Cria a estrutura para o evento se não existir
+            if (!results[row.event_id]) {
+                results[row.event_id] = {
+                    eventName: row.event_name,
+                    users: {}
+                };
+            }
+            // Cria a estrutura para o usuário dentro do evento se não existir
+            if (!results[row.event_id].users[row.user_id]) {
+                results[row.event_id].users[row.user_id] = {
+                    username: row.username,
+                    picks: [],
+                    stats: {
+                        totalPicks: 0,
+                        correctWinners: 0,
+                        correctMethods: 0,
+                        correctDetails: 0,
+                        totalPoints: 0
+                    }
+                };
+            }
+
+            // Adiciona o palpite ao usuário
+            results[row.event_id].users[row.user_id].picks.push(row);
+
+            // Calcula as estatísticas
+            const stats = results[row.event_id].users[row.user_id].stats;
+            stats.totalPicks++;
+            stats.totalPoints += row.points_awarded;
+            if(row.real_winner){ // Só calcula acertos se a luta foi apurada
+                if(row.predicted_winner_name === row.real_winner) stats.correctWinners++;
+                if(row.predicted_method === row.real_method) stats.correctMethods++;
+                if(row.predicted_details === row.real_details) stats.correctDetails++;
+            }
+        }
+        res.json(results);
     } catch (error) {
-        console.error('Erro ao buscar palpites do evento:', error);
-        res.status(500).json({ error: 'Erro ao buscar palpites.' });
+        console.error('Erro ao buscar todos os palpites:', error);
+        res.status(500).json({ error: 'Erro ao buscar dados.' });
     }
 });
 
