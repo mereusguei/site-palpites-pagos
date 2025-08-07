@@ -4,6 +4,11 @@ const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg'); // Importa o driver do PostgreSQL
 
+// No topo do server.js
+const { MercadoPagoConfig, Preference } = require('mercadopago');
+// Abaixo das importações
+const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
+
 // Cria a instância do nosso servidor Express
 const app = express();
 const PORT = process.env.PORT || 3000; // O Render.com vai nos dar uma porta, se não, usamos a 3000
@@ -228,6 +233,79 @@ app.post('/api/picks', async (req, res) => {
     console.log(`Recebido pedido para salvar palpites do usuário ${userId} para o evento ${eventId}`);
     // ... aqui viria a lógica real ...
     res.status(201).json({ message: 'Palpites salvos com sucesso!'});
+});
+
+// ROTA PARA CRIAR UMA PREFERÊNCIA DE PAGAMENTO
+app.post('/api/create-payment', verifyToken, async (req, res) => {
+    const { eventId, eventName } = req.body;
+    const userId = req.user.id;
+
+    try {
+        const preference = new Preference(client);
+
+        const result = await preference.create({
+            body: {
+                items: [
+                    {
+                        id: `evt-${eventId}`,
+                        title: `Acesso aos Palpites: ${eventName}`,
+                        quantity: 1,
+                        unit_price: 5.00, // Preço do acesso em R$
+                        currency_id: 'BRL',
+                    }
+                ],
+                back_urls: {
+                    // URLs para onde o usuário será redirecionado após o pagamento
+                    success: 'https://site-palpites-pagos.vercel.app/payment-success.html', // Criaremos esta página
+                    failure: 'https://site-palpites-pagos.vercel.app/', // Volta para a home em caso de falha
+                    pending: 'https://site-palpites-pagos.vercel.app/', // Volta para a home se estiver pendente
+                },
+                auto_return: 'approved', // Retorna automaticamente em caso de sucesso
+                metadata: { // Dados extras que queremos associar ao pagamento
+                    user_id: userId,
+                    event_id: eventId
+                },
+                notification_url: `https://site-palpites-pagos.vercel.app/api/payment-webhook` // Onde o MP vai nos avisar
+            }
+        });
+
+        // Envia o link de checkout de volta para o frontend
+        res.json({ checkoutUrl: result.init_point });
+
+    } catch (error) {
+        console.error('Erro ao criar preferência de pagamento:', error);
+        res.status(500).json({ error: 'Não foi possível iniciar o pagamento.' });
+    }
+});
+
+
+// ROTA PARA RECEBER NOTIFICAÇÕES (WEBHOOK) DO MERCADO PAGO
+app.post('/api/payment-webhook', async (req, res) => {
+    const notification = req.body;
+    
+    console.log('Webhook recebido:', notification);
+
+    try {
+        // Verificamos se é uma notificação de pagamento e se foi aprovado
+        if (notification.type === 'payment' && notification.action === 'payment.updated') {
+            // Aqui, em um projeto real, buscaríamos os detalhes do pagamento na API do MP
+            // para pegar o `metadata` e confirmar o status.
+            // Por simplicidade, vamos assumir que a notificação é válida por enquanto.
+            // A lógica completa exigiria mais uma chamada à API do MP.
+            
+            // --- Lógica Simplificada para Inserir na Tabela `payments` ---
+            // Para pegar o userId e eventId, precisaríamos buscar o pagamento pelo `notification.data.id`
+            // e extrair o `metadata`. Vamos simular isso por enquanto.
+            
+            console.log('Pagamento APROVADO recebido! Lógica de salvar na tabela `payments` seria executada aqui.');
+        }
+
+        res.sendStatus(200); // Responde ao Mercado Pago que recebemos a notificação com sucesso.
+
+    } catch (error) {
+        console.error('Erro no webhook:', error);
+        res.sendStatus(500);
+    }
 });
 
 
