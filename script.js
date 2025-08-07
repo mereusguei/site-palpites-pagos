@@ -284,32 +284,73 @@ document.querySelectorAll('.method-btn').forEach(btn => {
 // Lógica para o formulário ao ser enviado (Passo 2 da Fase 1)
 const pickForm = document.getElementById('pick-form');
 if(pickForm){
-    pickForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        
-        const fightId = parseInt(document.getElementById('fight-id').value);
-        const winnerName = document.getElementById('winner').value;
-        const methodBtn = document.querySelector('.method-btn.selected');
-        
-        if (!winnerName || !methodBtn) {
-            alert('Por favor, selecione o vencedor e o método da vitória.');
-            return;
+    pickForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const fightId = parseInt(document.getElementById('fight-id').value);
+    const winnerName = document.getElementById('winner').value;
+    const methodBtn = document.querySelector('.method-btn.selected');
+    
+    if (!winnerName || !methodBtn) {
+        return alert('Por favor, selecione o vencedor e o método da vitória.');
+    }
+
+    const method = methodBtn.dataset.method;
+    let details = '';
+    let methodDisplay = '';
+
+    if (method === 'Decision') {
+        const decisionType = pickForm.querySelector('[name="decision-type"]').value;
+        details = decisionType;
+        methodDisplay = `Decisão ${decisionType}`;
+    } else {
+        const round = pickForm.querySelector('[name="round"]').value;
+        details = `Round ${round}`;
+        methodDisplay = `${method} no ${details}`;
+    }
+
+    // Pega o token do localStorage
+    const token = localStorage.getItem('token');
+    if (!token) {
+        alert('Você precisa estar logado para salvar um palpite.');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/picks`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` // Envia o token no cabeçalho
+            },
+            body: JSON.stringify({
+                fightId,
+                winnerName,
+                method,
+                details
+            }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Não foi possível salvar o palpite.');
         }
 
-        // Simulação do próximo passo: por enquanto, vamos apenas mostrar no console.
-        // Na Fase 1, Passo 2, aqui chamaremos a API para salvar no banco de dados.
-        console.log(`Palpite para a luta ID ${fightId}:`);
-        console.log(`Vencedor: ${winnerName}`);
-        console.log(`Método: ${methodBtn.dataset.method}`);
-
-        alert('Palpite registrado no console! (Backend ainda não conectado)');
+        alert('Palpite salvo com sucesso!');
         
-        // Fecha o modal e atualiza o card para mostrar que o palpite foi feito (simulação)
+        // Atualiza o objeto de palpites localmente para refletir na tela
+        eventData.userPicks[fightId] = { winnerName, methodDisplay };
+        loadFights(); // Recarrega os cards para mostrar o palpite salvo
+
         const modal = document.getElementById('pick-modal');
         if(modal) modal.classList.remove('active');
 
-        // Aqui, futuramente, vamos recarregar os dados para mostrar o palpite salvo.
-    });
+    } catch (error) {
+        console.error('Erro:', error);
+        alert(`Erro ao salvar palpite: ${error.message}`);
+    }
+});
 }
 
     // Lógica do formulário do modal
@@ -337,43 +378,7 @@ if(pickForm){
         });
     });
 
-    // Salvar palpite
-    pickForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const fightId = parseInt(document.getElementById('fight-id').value);
-        const winnerName = document.getElementById('winner').value;
-        const methodBtn = document.querySelector('.method-btn.selected');
-        
-        if (!winnerName || !methodBtn) {
-            alert('Por favor, selecione o vencedor e o método da vitória.');
-            return;
-        }
 
-        const method = methodBtn.dataset.method;
-        let details = '';
-        let methodDisplay = method;
-
-        if (method === 'Decision') {
-            const decisionType = pickForm.querySelector('[name="decision-type"]').value;
-            details = decisionType;
-            methodDisplay = `Decisão ${decisionType}`;
-        } else {
-            const round = pickForm.querySelector('[name="round"]').value;
-            details = `Round ${round}`;
-            methodDisplay = `${method} no ${details}`;
-        }
-
-        eventData.userPicks[fightId] = {
-            winnerName,
-            method,
-            details,
-            methodDisplay
-        };
-
-        console.log('Palpite salvo:', eventData.userPicks[fightId]);
-        modal.classList.remove('active');
-        loadFights(); // Recarrega os cards para mostrar o palpite feito
-    });
 
     // Fechar modal
     closeModalBtn.addEventListener('click', () => modal.classList.remove('active'));
