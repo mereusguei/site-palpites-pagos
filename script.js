@@ -350,39 +350,42 @@ if(pickForm){
     }
 
     try {
-        const response = await fetch(`${API_URL}/api/picks`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}` // Envia o token no cabeçalho
-            },
-            body: JSON.stringify({
-                fightId,
-                winnerName,
-                method,
-                details
-            }),
-        });
+    const response = await fetch(`${API_URL}/api/picks`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+            fightId,
+            winnerName,
+            method,
+            details
+        }),
+    });
 
-        const data = await response.json();
+    const data = await response.json();
 
-        if (!response.ok) {
-            throw new Error(data.error || 'Não foi possível salvar o palpite.');
-        }
-
-        alert('Palpite salvo com sucesso!');
-        
-        // Atualiza o objeto de palpites localmente para refletir na tela
-        eventData.userPicks[fightId] = { winnerName, methodDisplay };
-        loadFights(); // Recarrega os cards para mostrar o palpite salvo
-
-        const modal = document.getElementById('pick-modal');
-        if(modal) modal.classList.remove('active');
-
-    } catch (error) {
-        console.error('Erro:', error);
-        alert(`Erro ao salvar palpite: ${error.message}`);
+    if (!response.ok) {
+        throw new Error(data.error || 'Não foi possível salvar o palpite.');
     }
+
+    // ----- A CORREÇÃO ESTÁ AQUI -----
+    // Em vez de usar dados locais, atualizamos o nosso eventData.userPicks
+    // com o dado real e completo que o backend retornou!
+    eventData.userPicks[fightId] = data.pick; 
+
+    alert('Palpite salvo com sucesso!');
+    
+    loadFights(); // Agora, ao recarregar os cards, ele usará os dados corretos.
+
+    const modal = document.getElementById('pick-modal');
+    if(modal) modal.classList.remove('active');
+
+} catch (error) {
+    console.error('Erro:', error);
+    alert(`Erro ao salvar palpite: ${error.message}`);
+}
 });
 }
 
