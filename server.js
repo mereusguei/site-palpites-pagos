@@ -185,7 +185,7 @@ app.post('/api/payment-webhook', async (req, res) => {
 
 // --- ROTAS DE ADMIN ---
 app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
-    const { fightId, winnerName, resultMethod, resultDetails } = req.body;
+    const { resultsArray, realFightOfTheNightId, realPerformanceOfTheNightFighter, fightId, winnerName, resultMethod, resultDetails } = req.body;
     if (!fightId || !winnerName || !resultMethod || !resultDetails) return res.status(400).json({ error: 'Dados do resultado incompletos.' });
     const dbClient = await pool.connect();
     try {
@@ -206,6 +206,28 @@ app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
             }
             await dbClient.query('UPDATE picks SET points_awarded = $1 WHERE id = $2', [points, pick.id]);
         }
+        // 5. APURAÇÃO DOS PALPITES BÔNUS (se os resultados foram enviados)
+    if (realFightOfTheNightId && realPerformanceOfTheNightFighter) {
+        // Zera os pontos de bônus do evento antes de recalcular
+        const eventId = (await client.query('SELECT event_id FROM fights WHERE id = $1', [resultsArray[0].fightId])).rows[0].event_id;
+        await client.query('UPDATE bonus_picks SET points_awarded = 0 WHERE event_id = $1', [eventId]);
+
+        // Busca todos os palpites bônus para o evento
+        const bonusPicksResult = await client.query('SELECT * FROM bonus_picks WHERE event_id = $1', [eventId]);
+        
+        for (const bonusPick of bonusPicksResult.rows) {
+            let bonusPoints = 0;
+            if (bonusPick.fight_of_the_night_fight_id == realFightOfTheNightId) {
+                bonusPoints += 20; // 20 pontos por acertar a Luta da Noite
+            }
+            if (bonusPick.performance_of_the_night_fighter_name === realPerformanceOfTheNightFighter) {
+                bonusPoints += 20; // 20 pontos por acertar a Performance da Noite
+            }
+            
+            // Atualiza os pontos do palpite bônus
+            await client.query('UPDATE bonus_picks SET points_awarded = $1 WHERE id = $2', [bonusPoints, bonusPick.id]);
+        }
+    }
         await dbClient.query('COMMIT');
         res.json({ message: `Resultados da luta ${fightId} apurados e ${picksResult.rows.length} palpites pontuados.` });
     } catch (error) {
