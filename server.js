@@ -362,13 +362,17 @@ app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
     const client = await pool.connect(); // Inicia uma transação para garantir a integridade dos dados
 
     try {
-        await client.query('BEGIN'); // Começa a transação
+    await client.query('BEGIN');
 
-        // 1. Atualiza o resultado real na tabela de lutas
-        await client.query(
-            'UPDATE fights SET winner_name = $1, result_method = $2, result_details = $3 WHERE id = $4',
-            [winnerName, resultMethod, resultDetails, fightId]
-        );
+    // ANTES de calcular, vamos ZERAR os pontos para esta luta.
+    // Isso garante que não estamos somando pontos de apurações antigas.
+    await client.query('UPDATE picks SET points_awarded = 0 WHERE fight_id = $1', [fightId]);
+
+    // 1. Atualiza o resultado real na tabela de lutas (como antes)
+    await client.query(
+        'UPDATE fights SET winner_name = $1, result_method = $2, result_details = $3 WHERE id = $4',
+        [winnerName, resultMethod, resultDetails, fightId]
+    );
 
         // 2. Busca todos os palpites para esta luta
         const picksResult = await client.query('SELECT * FROM picks WHERE fight_id = $1', [fightId]);
