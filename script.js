@@ -72,7 +72,7 @@ if (mainContent) {
                     if (paymentSection) {
                         paymentSection.innerHTML = `
                             <button id="pay-btn" class="btn btn-primary btn-save-all">
-                                Liberar Palpites para "${eventData.eventName}" (R$ 5,00)
+                                Liberar Palpites para "${eventData.eventName}" (R$ 0,05)
                             </button>
                         `;
                         
