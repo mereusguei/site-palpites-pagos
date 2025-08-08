@@ -312,17 +312,22 @@ app.post('/api/bonus-picks', verifyToken, async (req, res) => {
 app.get('/api/admin/all-picks', verifyToken, verifyAdmin, async (req, res) => {
     try {
         const query = `
-            SELECT 
-                e.id as event_id, e.name as event_name, u.id as user_id, u.username,
-                p.id as pick_id, p.fight_id, p.predicted_winner_name, p.predicted_method, 
-                p.predicted_details, p.points_awarded, f.winner_name as real_winner, 
-                f.result_method as real_method, f.result_details as real_details
-            FROM events e
-            LEFT JOIN fights f ON e.id = f.event_id
-            LEFT JOIN picks p ON f.id = p.fight_id
-            LEFT JOIN users u ON p.user_id = u.id
-            WHERE e.id = 1 -- Limitando ao evento 1 por enquanto
-            ORDER BY e.id, u.username, p.fight_id;`;
+    SELECT 
+        e.id as event_id, e.name as event_name, u.id as user_id, u.username,
+        p.id as pick_id, p.fight_id, p.predicted_winner_name, p.predicted_method, 
+        p.predicted_details, p.points_awarded, f.winner_name as real_winner, 
+        f.result_method as real_method, f.result_details as real_details,
+        -- NOVA PARTE: Adiciona os dados dos palpites bônus
+        bp.fight_of_the_night_fight_id as bonus_fotn_pick,
+        bp.performance_of_the_night_fighter_name as bonus_potn_pick
+    FROM events e
+    LEFT JOIN fights f ON e.id = f.event_id
+    LEFT JOIN picks p ON f.id = p.fight_id
+    LEFT JOIN users u ON p.user_id = u.id
+    -- NOVO JOIN: Junta com a tabela de palpites bônus
+    LEFT JOIN bonus_picks bp ON u.id = bp.user_id AND e.id = bp.event_id
+    WHERE e.id = 1
+    ORDER BY e.id, u.username, p.fight_id;`;
         const allData = await pool.query(query);
         const results = {};
         for (const row of allData.rows) {
@@ -332,7 +337,11 @@ app.get('/api/admin/all-picks', verifyToken, verifyAdmin, async (req, res) => {
             if (row.user_id && !results[row.event_id].users[row.user_id]) {
                 results[row.event_id].users[row.user_id] = {
                     username: row.username, picks: [],
-                    stats: { totalPicks: 0, correctWinners: 0, correctMethods: 0, correctDetails: 0, totalPoints: 0 }
+        bonus_picks: { // NOVO OBJETO PARA OS BÔNUS
+            fotn_fight_id: row.bonus_fotn_pick,
+            potn_fighter: row.bonus_potn_pick
+        },
+        stats: { totalPicks: 0, correctWinners: 0, correctMethods: 0, correctDetails: 0, totalPoints: 0 }
                 };
             }
             if (row.pick_id) {
