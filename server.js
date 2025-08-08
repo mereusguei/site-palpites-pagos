@@ -1,4 +1,3 @@
-// =================== CÓDIGO FINAL E COMPLETO PARA server.js ===================
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -10,14 +9,12 @@ const { MercadoPagoConfig, Preference } = require('mercadopago');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
+const mpClient = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
 const JWT_SECRET = process.env.JWT_SECRET || 'sua-chave-secreta-super-dificil-de-adivinhar-123';
 
-// Middlewares
 app.use(cors());
 app.use(express.json());
 
-// Middleware de verificação de Token
 const verifyToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -137,6 +134,23 @@ app.post('/api/picks', verifyToken, async (req, res) => {
         res.status(500).json({ error: 'Erro ao salvar o palpite.' });
     }
 });
+// ROTA PARA SALVAR PALPITES BÔNUS (ESTAVA FALTANDO)
+app.post('/api/bonus-picks', verifyToken, async (req, res) => {
+    const userId = req.user.id;
+    const { eventId, fightOfTheNight, performanceOfTheNight } = req.body;
+    const query = `
+        INSERT INTO bonus_picks (user_id, event_id, fight_of_the_night_fight_id, performance_of_the_night_fighter_name)
+        VALUES ($1, $2, $3, $4) ON CONFLICT (user_id, event_id) DO UPDATE SET
+            fight_of_the_night_fight_id = EXCLUDED.fight_of_the_night_fight_id,
+            performance_of_the_night_fighter_name = EXCLUDED.performance_of_the_night_fighter_name
+        RETURNING *;`;
+    try {
+        const result = await pool.query(query, [userId, eventId, parseInt(fightOfTheNight), performanceOfTheNight]);
+        res.status(201).json({ message: 'Palpites bônus salvos!', pick: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ error: 'Erro ao salvar palpites bônus.' });
+    }
+});
 // ROTA PÚBLICA (PARA USUÁRIOS LOGADOS) PARA O RANKING GERAL
 app.get('/api/rankings/general', verifyToken, async (req, res) => {
     try {
@@ -201,69 +215,51 @@ app.post('/api/payment-webhook', async (req, res) => {
     }
 });
 
-// --- ROTAS DE ADMIN ---
+// --- ROTA DE ADMIN CORRIGIDA ---
 app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
-    const { resultsArray, realFightOfTheNightId, realPerformanceOfTheNightFighter, fightId, winnerName, resultMethod, resultDetails } = req.body;
-    if (!fightId || !winnerName || !resultMethod || !resultDetails) return res.status(400).json({ error: 'Dados do resultado incompletos.' });
+    const { resultsArray, realFightOfTheNightId, realPerformanceOfTheNightFighter } = req.body;
     const dbClient = await pool.connect();
     try {
-        await client.query('BEGIN'); // Inicia a transação
-
-        // --- APURAÇÃO DAS LUTAS INDIVIDUAIS ---
-        for (const result of resultsArray) {
-            const { fightId, winnerName, resultMethod, resultDetails } = result;
-            
-            // Zera os pontos da luta antes de recalcular
-            await client.query('UPDATE picks SET points_awarded = 0 WHERE fight_id = $1', [fightId]);
-            
-            // Atualiza o resultado real da luta
-            await client.query('UPDATE fights SET winner_name = $1, result_method = $2, result_details = $3 WHERE id = $4', [winnerName, resultMethod, resultDetails, fightId]);
-
-            const picksResult = await client.query('SELECT * FROM picks WHERE fight_id = $1', [fightId]);
-            for (const pick of picksResult.rows) {
-                let points = 0;
-                if (pick.predicted_winner_name === winnerName) {
-                    points += 20;
-                    if (pick.predicted_method === resultMethod) {
-                        points += 15;
-                        if (pick.predicted_details === resultDetails) {
-                            points += 10;
+        await dbClient.query('BEGIN');
+        if (resultsArray && resultsArray.length > 0) {
+            for (const result of resultsArray) {
+                const { fightId, winnerName, resultMethod, resultDetails } = result;
+                await dbClient.query('UPDATE picks SET points_awarded = 0 WHERE fight_id = $1', [fightId]);
+                await dbClient.query('UPDATE fights SET winner_name = $1, result_method = $2, result_details = $3 WHERE id = $4', [winnerName, resultMethod, resultDetails, fightId]);
+                const picksResult = await dbClient.query('SELECT * FROM picks WHERE fight_id = $1', [fightId]);
+                for (const pick of picksResult.rows) {
+                    let points = 0;
+                    if (pick.predicted_winner_name === winnerName) {
+                        points += 20;
+                        if (pick.predicted_method === resultMethod) {
+                            points += 15;
+                            if (pick.predicted_details === resultDetails) { points += 10; }
                         }
                     }
+                    await dbClient.query('UPDATE picks SET points_awarded = $1 WHERE id = $2', [points, pick.id]);
                 }
-                await client.query('UPDATE picks SET points_awarded = $1 WHERE id = $2', [points, pick.id]);
             }
         }
-
-        // --- APURAÇÃO DOS PALPITES BÔNUS ---
-        if (resultsArray.length > 0 && realFightOfTheNightId && realPerformanceOfTheNightFighter) {
-            // Pega o ID do evento a partir da primeira luta apurada
-            const eventIdResult = await client.query('SELECT event_id FROM fights WHERE id = $1', [resultsArray[0].fightId]);
+        if (realFightOfTheNightId && realPerformanceOfTheNightFighter) {
+            const eventIdResult = await dbClient.query('SELECT event_id FROM fights WHERE id = $1', [resultsArray[0].fightId]);
             const eventId = eventIdResult.rows[0].event_id;
-
-            // Zera os pontos de bônus do evento antes de recalcular
-            await client.query('UPDATE bonus_picks SET points_awarded = 0 WHERE event_id = $1', [eventId]);
-
-            const bonusPicksResult = await client.query('SELECT * FROM bonus_picks WHERE event_id = $1', [eventId]);
+            await dbClient.query('UPDATE bonus_picks SET points_awarded = 0 WHERE event_id = $1', [eventId]);
+            const bonusPicksResult = await dbClient.query('SELECT * FROM bonus_picks WHERE event_id = $1', [eventId]);
             for (const bonusPick of bonusPicksResult.rows) {
                 let bonusPoints = 0;
-                if (bonusPick.fight_of_the_night_fight_id == realFightOfTheNightId) {
-                    bonusPoints += 20; // 20 pontos por acertar a Luta da Noite
-                }
-                if (bonusPick.performance_of_the_night_fighter_name === realPerformanceOfTheNightFighter) {
-                    bonusPoints += 20; // 20 pontos por acertar a Performance da Noite
-                }
-                await client.query('UPDATE bonus_picks SET points_awarded = $1 WHERE id = $2', [bonusPoints, bonusPick.id]);
+                if (bonusPick.fight_of_the_night_fight_id == realFightOfTheNightId) { bonusPoints += 20; }
+                if (bonusPick.performance_of_the_night_fighter_name === realPerformanceOfTheNightFighter) { bonusPoints += 20; }
+                await dbClient.query('UPDATE bonus_picks SET points_awarded = $1 WHERE id = $2', [bonusPoints, bonusPick.id]);
             }
         }
-        
-        await client.query('COMMIT'); // Finaliza a transação com sucesso
+        await dbClient.query('COMMIT');
         res.json({ message: `Apuração concluída com sucesso!` });
-
     } catch (error) {
-        await client.query('ROLLBACK'); // Desfaz tudo em caso de erro
+        await dbClient.query('ROLLBACK');
         console.error('Erro ao apurar resultados:', error);
         res.status(500).json({ error: 'Erro ao apurar resultados.' });
+    } finally {
+        dbClient.release();
     }
 });
 // No server.js, adicione esta rota
