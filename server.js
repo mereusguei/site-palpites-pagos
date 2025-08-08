@@ -141,27 +141,7 @@ app.get('/api/rankings/general', verifyToken, async (req, res) => {
         res.status(500).json({ error: 'Erro ao buscar ranking geral.' });
     }
 });
-// ROTA PÚBLICA PARA O RANKING POR EVENTO
-app.get('/api/rankings/event/:eventId', verifyToken, async (req, res) => {
-    const { eventId } = req.params;
-    try {
-        const query = `
-            SELECT 
-                u.username, 
-                COALESCE(SUM(p.points_awarded), 0) as event_points
-            FROM users u
-            LEFT JOIN picks p ON u.id = p.user_id AND p.fight_id IN (SELECT id FROM fights WHERE event_id = $1)
-            WHERE u.is_admin = FALSE
-            GROUP BY u.id
-            ORDER BY event_points DESC, u.username ASC;
-        `;
-        const result = await pool.query(query, [eventId]);
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Erro ao buscar ranking do evento:', error);
-        res.status(500).json({ error: 'Erro ao buscar ranking do evento.' });
-    }
-});
+
 
 // --- ROTAS DE PAGAMENTO ---
 app.post('/api/create-payment', verifyToken, async (req, res) => {
