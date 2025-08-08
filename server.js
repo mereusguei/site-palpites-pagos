@@ -220,9 +220,18 @@ app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
     const { resultsArray, realFightOfTheNightId, realPerformanceOfTheNightFighter } = req.body;
     const dbClient = await pool.connect();
     try {
-        await dbClient.query('BEGIN');
-        if (resultsArray && resultsArray.length > 0) {
-            for (const result of resultsArray) {
+    await dbClient.query('BEGIN'); // Inicia a transação
+    let eventId = null;
+
+    // --- APURAÇÃO DAS LUTAS INDIVIDUAIS ---
+    if (resultsArray && resultsArray.length > 0) {
+        // Se temos lutas para apurar, pegamos o eventId da primeira
+        const eventIdResult = await dbClient.query('SELECT event_id FROM fights WHERE id = $1', [resultsArray[0].fightId]);
+        if (eventIdResult.rows.length > 0) {
+            eventId = eventIdResult.rows[0].event_id;
+        }
+
+        for (const result of resultsArray) {
                 const { fightId, winnerName, resultMethod, resultDetails } = result;
                 await dbClient.query('UPDATE picks SET points_awarded = 0 WHERE fight_id = $1', [fightId]);
                 await dbClient.query('UPDATE fights SET winner_name = $1, result_method = $2, result_details = $3 WHERE id = $4', [winnerName, resultMethod, resultDetails, fightId]);
@@ -241,26 +250,44 @@ app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
             }
         }
         if (realFightOfTheNightId && realPerformanceOfTheNightFighter) {
-            const eventIdResult = await dbClient.query('SELECT event_id FROM fights WHERE id = $1', [resultsArray[0].fightId]);
-            const eventId = eventIdResult.rows[0].event_id;
+        // Se ainda não temos o eventId (porque nenhuma luta foi apurada),
+        // buscamos ele a partir do ID da Luta da Noite.
+        if (!eventId) {
+            const eventIdResult = await dbClient.query('SELECT event_id FROM fights WHERE id = $1', [realFightOfTheNightId]);
+            if (eventIdResult.rows.length > 0) {
+                eventId = eventIdResult.rows[0].event_id;
+            }
+        }
+        
+        // Se temos um eventId, podemos prosseguir com a apuração dos bônus
+        if (eventId) {
+            // Zera os pontos de bônus do evento antes de recalcular
             await dbClient.query('UPDATE bonus_picks SET points_awarded = 0 WHERE event_id = $1', [eventId]);
+
             const bonusPicksResult = await dbClient.query('SELECT * FROM bonus_picks WHERE event_id = $1', [eventId]);
             for (const bonusPick of bonusPicksResult.rows) {
                 let bonusPoints = 0;
-                if (bonusPick.fight_of_the_night_fight_id == realFightOfTheNightId) { bonusPoints += 20; }
-                if (bonusPick.performance_of_the_night_fighter_name === realPerformanceOfTheNightFighter) { bonusPoints += 20; }
+                if (bonusPick.fight_of_the_night_fight_id == realFightOfTheNightId) {
+                    bonusPoints += 20; // 20 pontos
+                }
+                if (bonusPick.performance_of_the_night_fighter_name === realPerformanceOfTheNightFighter) {
+                    bonusPoints += 20; // 20 pontos
+                }
                 await dbClient.query('UPDATE bonus_picks SET points_awarded = $1 WHERE id = $2', [bonusPoints, bonusPick.id]);
             }
         }
-        await dbClient.query('COMMIT');
-        res.json({ message: `Apuração concluída com sucesso!` });
-    } catch (error) {
-        await dbClient.query('ROLLBACK');
-        console.error('Erro ao apurar resultados:', error);
-        res.status(500).json({ error: 'Erro ao apurar resultados.' });
-    } finally {
-        dbClient.release();
     }
+    
+    await dbClient.query('COMMIT'); // Finaliza a transação com sucesso
+    res.json({ message: `Apuração concluída com sucesso!` });
+
+} catch (error) {
+    await dbClient.query('ROLLBACK'); // Desfaz tudo em caso de erro
+    console.error('Erro ao apurar resultados:', error);
+    res.status(500).json({ error: 'Erro ao apurar resultados.' });
+} finally {
+    dbClient.release(); // Libera a conexão com o banco
+}
 });
 // No server.js, adicione esta rota
 app.post('/api/bonus-picks', verifyToken, async (req, res) => {
