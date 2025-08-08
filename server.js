@@ -150,7 +150,7 @@ app.post('/api/create-payment', verifyToken, async (req, res) => {
         const preference = new Preference(client);
         const result = await preference.create({
             body: {
-                items: [{ id: `evt-${eventId}`, title: `Acesso aos Palpites: ${eventName}`, quantity: 1, unit_price: 5.00, currency_id: 'BRL' }],
+                items: [{ id: `evt-${eventId}`, title: `Acesso aos Palpites: ${eventName}`, quantity: 1, unit_price: 0.05, currency_id: 'BRL' }],
                 back_urls: { success: 'https://mereusguei.github.io/payment-success.html', failure: 'https://mereusguei.github.io/', pending: 'https://mereusguei.github.io/' },
                 auto_return: 'approved',
                 metadata: { user_id: userId, event_id: eventId },
