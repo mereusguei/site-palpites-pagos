@@ -429,44 +429,44 @@ app.get('/api/admin/all-picks', verifyToken, verifyAdmin, async (req, res) => {
         const allData = await pool.query(query);
 
         // 2. Processa e agrupa os dados
-        const results = {};
-        for (const row of allData.rows) {
-            // Cria a estrutura para o evento se não existir
-            if (!results[row.event_id]) {
-                results[row.event_id] = {
-                    eventName: row.event_name,
-                    users: {}
-                };
+const results = {};
+for (const row of allData.rows) {
+    if (!results[row.event_id]) {
+        results[row.event_id] = { eventName: row.event_name, users: {} };
+    }
+    if (!results[row.event_id].users[row.user_id]) {
+        results[row.event_id].users[row.user_id] = {
+            username: row.username,
+            picks: [],
+            stats: {
+                totalPicks: 0, correctWinners: 0,
+                correctMethods: 0, correctDetails: 0,
+                totalPoints: 0
             }
-            // Cria a estrutura para o usuário dentro do evento se não existir
-            if (!results[row.event_id].users[row.user_id]) {
-                results[row.event_id].users[row.user_id] = {
-                    username: row.username,
-                    picks: [],
-                    stats: {
-                        totalPicks: 0,
-                        correctWinners: 0,
-                        correctMethods: 0,
-                        correctDetails: 0,
-                        totalPoints: 0
-                    }
-                };
-            }
+        };
+    }
 
-            // Adiciona o palpite ao usuário
-            results[row.event_id].users[row.user_id].picks.push(row);
+    const userEventData = results[row.event_id].users[row.user_id];
+    userEventData.picks.push(row);
 
-            // Calcula as estatísticas
-            const stats = results[row.event_id].users[row.user_id].stats;
-            stats.totalPicks++;
-            stats.totalPoints += row.points_awarded;
-            if(row.real_winner){ // Só calcula acertos se a luta foi apurada
-                if(row.predicted_winner_name === row.real_winner) stats.correctWinners++;
-                if(row.predicted_method === row.real_method) stats.correctMethods++;
-                if(row.predicted_details === row.real_details) stats.correctDetails++;
+    // Calcula as estatísticas
+    const stats = userEventData.stats;
+    stats.totalPicks++;
+    stats.totalPoints += row.points_awarded;
+    if (row.real_winner) { // Só calcula acertos se a luta foi apurada
+        // A LÓGICA DE CÁLCULO DE ACERTOS EM CASCATA
+        if (row.predicted_winner_name === row.real_winner) {
+            stats.correctWinners++;
+            if (row.predicted_method === row.real_method) {
+                stats.correctMethods++;
+                if (row.predicted_details === row.real_details) {
+                    stats.correctDetails++;
+                }
             }
         }
-        res.json(results);
+    }
+}
+res.json(results);
     } catch (error) {
         console.error('Erro ao buscar todos os palpites:', error);
         res.status(500).json({ error: 'Erro ao buscar dados.' });
