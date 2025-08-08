@@ -250,20 +250,34 @@ app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
             if (eventIdResult.rows.length > 0) eventId = eventIdResult.rows[0].event_id;
         }
         if (eventId) {
-            // SALVA os resultados reais dos bônus na tabela de eventos
-            await dbClient.query('UPDATE events SET real_fotn_fight_id = $1, real_potn_fighter_name = $2 WHERE id = $3', [realFightOfTheNightId, realPerformanceOfTheNightFighter, eventId]);
-            
-            // ZERA os pontos de bônus antigos antes de recalcular
-            await dbClient.query('UPDATE bonus_picks SET points_awarded = 0 WHERE event_id = $1', [eventId]);
-            const bonusPicksResult = await dbClient.query('SELECT * FROM bonus_picks WHERE event_id = $1', [eventId]);
-            for (const bonusPick of bonusPicksResult.rows) {
-                let bonusPoints = 0;
-                if (bonusPick.fight_of_the_night_fight_id == realFightOfTheNightId) bonusPoints += 20;
-                if (bonusPick.performance_of_the_night_fighter_name === realPerformanceOfTheNightFighter) bonusPoints += 20;
-                await dbClient.query('UPDATE bonus_picks SET points_awarded = $1 WHERE id = $2', [bonusPoints, bonusPick.id]);
+        // Salva os resultados reais dos bônus na tabela de eventos
+        await dbClient.query(
+            'UPDATE events SET real_fotn_fight_id = $1, real_potn_fighter_name = $2 WHERE id = $3',
+            // Se for "NONE", salva NULL no banco, senão salva o valor
+            [
+                realFightOfTheNightId === 'NONE' ? null : realFightOfTheNightId, 
+                realPerformanceOfTheNightFighter === 'NONE' ? null : realPerformanceOfTheNightFighter, 
+                eventId
+            ]
+        );
+        
+        // Zera os pontos de bônus antes de recalcular
+        await dbClient.query('UPDATE bonus_picks SET points_awarded = 0 WHERE event_id = $1', [eventId]);
+        const bonusPicksResult = await dbClient.query('SELECT * FROM bonus_picks WHERE event_id = $1', [eventId]);
+
+        for (const bonusPick of bonusPicksResult.rows) {
+            let bonusPoints = 0;
+            // Só calcula pontos se o bônus real NÃO for "NONE"
+            if (realFightOfTheNightId !== 'NONE' && bonusPick.fight_of_the_night_fight_id == realFightOfTheNightId) {
+                bonusPoints += 20;
             }
+            if (realPerformanceOfTheNightFighter !== 'NONE' && bonusPick.performance_of_the_night_fighter_name === realPerformanceOfTheNightFighter) {
+                bonusPoints += 20;
+            }
+            await dbClient.query('UPDATE bonus_picks SET points_awarded = $1 WHERE id = $2', [bonusPoints, bonusPick.id]);
         }
     }
+}
     await dbClient.query('COMMIT'); // Finaliza a transação com sucesso
     res.json({ message: `Apuração concluída com sucesso!` });
 
