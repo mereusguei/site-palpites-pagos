@@ -119,6 +119,28 @@ app.post('/api/picks', verifyToken, async (req, res) => {
         res.status(500).json({ error: 'Erro ao salvar o palpite.' });
     }
 });
+// ROTA PÚBLICA (PARA USUÁRIOS LOGADOS) PARA O RANKING GERAL
+app.get('/api/rankings/general', verifyToken, async (req, res) => {
+    try {
+        // Esta consulta busca o nome de cada usuário e soma todos os pontos
+        // que ele já ganhou em todos os eventos.
+        const query = `
+            SELECT 
+                u.username, 
+                COALESCE(SUM(p.points_awarded), 0) as total_points
+            FROM users u
+            LEFT JOIN picks p ON u.id = p.user_id
+            WHERE u.is_admin = FALSE -- Importante: não incluir admins no ranking público
+            GROUP BY u.id
+            ORDER BY total_points DESC, u.username ASC;
+        `;
+        const result = await pool.query(query);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Erro ao buscar ranking geral:', error);
+        res.status(500).json({ error: 'Erro ao buscar ranking geral.' });
+    }
+});
 
 // --- ROTAS DE PAGAMENTO ---
 app.post('/api/create-payment', verifyToken, async (req, res) => {
