@@ -125,15 +125,15 @@ app.get('/api/rankings/general', verifyToken, async (req, res) => {
         // Esta consulta busca o nome de cada usuário e soma todos os pontos
         // que ele já ganhou em todos os eventos.
         const query = `
-            SELECT 
-                u.username, 
-                COALESCE(SUM(p.points_awarded), 0) as total_points
-            FROM users u
-            LEFT JOIN picks p ON u.id = p.user_id
-            WHERE u.is_admin = FALSE -- Importante: não incluir admins no ranking público
-            GROUP BY u.id
-            ORDER BY total_points DESC, u.username ASC;
-        `;
+    SELECT 
+        u.username, 
+        COALESCE(SUM(p.points_awarded), 0) as total_points -- COALESCE garante que se a soma for nula, retorne 0
+    FROM users u
+    LEFT JOIN picks p ON u.id = p.user_id
+    WHERE u.is_admin = FALSE
+    GROUP BY u.id
+    ORDER BY total_points DESC, u.username ASC;
+`;
         const result = await pool.query(query);
         res.json(result.rows);
     } catch (error) {
