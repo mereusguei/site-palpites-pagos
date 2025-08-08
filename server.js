@@ -286,6 +286,32 @@ app.get('/api/admin/all-picks', verifyToken, verifyAdmin, async (req, res) => {
         res.status(500).json({ error: 'Erro ao buscar dados.' });
     }
 });
+// ROTA DE ADMIN PARA OS RANKINGS DE PRECISÃO (ACERTO)
+app.get('/api/rankings/accuracy', verifyToken, verifyAdmin, async (req, res) => {
+    try {
+        // Esta é uma consulta mais complexa que calcula tudo de uma vez
+        const query = `
+            SELECT
+                u.username,
+                COUNT(p.id) AS total_picks,
+                SUM(CASE WHEN f.winner_name IS NOT NULL THEN 1 ELSE 0 END) AS total_apured_picks,
+                SUM(CASE WHEN p.predicted_winner_name = f.winner_name THEN 1 ELSE 0 END) AS correct_winners,
+                SUM(CASE WHEN p.predicted_winner_name = f.winner_name AND p.predicted_method = f.result_method THEN 1 ELSE 0 END) AS correct_methods,
+                SUM(CASE WHEN p.predicted_winner_name = f.winner_name AND p.predicted_method = f.result_method AND p.predicted_details = f.result_details THEN 1 ELSE 0 END) AS correct_details
+            FROM users u
+            JOIN picks p ON u.id = p.user_id
+            JOIN fights f ON p.fight_id = f.id
+            WHERE u.is_admin = FALSE
+            GROUP BY u.id
+            ORDER BY correct_winners DESC, correct_methods DESC, correct_details DESC;
+        `;
+        const result = await pool.query(query);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Erro ao buscar rankings de acerto:', error);
+        res.status(500).json({ error: 'Erro ao buscar rankings de acerto.' });
+    }
+});
 
 // Inicia o servidor
 app.listen(PORT, async () => {
