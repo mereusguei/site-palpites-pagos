@@ -1,69 +1,44 @@
-// Importa os pacotes que instalamos
-require('dotenv').config(); // Carrega as variáveis do arquivo .env
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { Pool } = require('pg'); // Importa o driver do PostgreSQL
-
-// No topo do server.js
-const { MercadoPagoConfig, Preference } = require('mercadopago');
-// Abaixo das importações
-const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
-
-// Cria a instância do nosso servidor Express
-const app = express();
-const PORT = process.env.PORT || 3000; // O Render.com vai nos dar uma porta, se não, usamos a 3000
-
-// Configura a conexão com o banco de dados Neon
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-});
-
-// Middlewares (configurações do servidor)
-app.use(cors()); // Permite requisições de outros domínios
-app.use(express.json()); // Permite que o servidor entenda JSON no corpo das requisições
-
-//
+const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { MercadoPagoConfig, Preference } = require('mercadopago');
 
-// Adicione uma chave secreta para o JWT. No mundo real, isso viria de uma variável de ambiente.
-const JWT_SECRET = 'sua-chave-secreta-super-dificil-de-adivinhar-123';
+const app = express();
+const PORT = process.env.PORT || 3000;
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
+const JWT_SECRET = process.env.JWT_SECRET || 'sua-chave-secreta-super-dificil-de-adivinhar-123';
 
-// MIDDLEWARE PARA VERIFICAR O TOKEN
+app.use(cors());
+app.use(express.json());
+
 const verifyToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Formato "Bearer TOKEN"
-
-    if (!token) {
-        return res.sendStatus(401); // Unauthorized (Não autorizado)
-    }
-
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.sendStatus(401);
     jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) {
-            return res.sendStatus(403); // Forbidden (Token inválido/expirado)
-        }
-        req.user = user; // Adiciona os dados do usuário (id, username) à requisição
-        next(); // Passa para a próxima função (a rota real)
+        if (err) return res.sendStatus(403);
+        req.user = user;
+        next();
     });
 };
 
-// MIDDLEWARE PARA VERIFICAR SE O USUÁRIO É ADMIN
 const verifyAdmin = async (req, res, next) => {
-    const userId = req.user.id; // Isso vem do middleware verifyToken
-
     try {
-        const userResult = await pool.query('SELECT is_admin FROM users WHERE id = $1', [userId]);
-        
-        // Se o usuário não for encontrado ou não for admin
+        const userResult = await pool.query('SELECT is_admin FROM users WHERE id = $1', [req.user.id]);
         if (userResult.rows.length === 0 || !userResult.rows[0].is_admin) {
             return res.status(403).json({ error: 'Acesso negado. Rota exclusiva para administradores.' });
         }
-
-        next(); // Se for admin, permite que a requisição continue
+        next();
     } catch (error) {
         return res.status(500).json({ error: 'Erro interno do servidor.' });
     }
 };
+
+app.get('/', (req, res) => res.send('<h1>API do Octagon Oracle está no ar!</h1>'));
 
 // ROTA DE CADASTRO (REGISTER)
 app.post('/api/auth/register', async (req, res) => {
@@ -354,137 +329,94 @@ app.post('/api/payment-webhook', async (req, res) => {
 // Protegida por verifyToken e verifyAdmin em sequência
 app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
     const { fightId, winnerName, resultMethod, resultDetails } = req.body;
-
-    if (!fightId || !winnerName || !resultMethod || !resultDetails) {
-        return res.status(400).json({ error: 'Dados do resultado incompletos.' });
-    }
-
-    const client = await pool.connect(); // Inicia uma transação para garantir a integridade dos dados
-
+    if (!fightId || !winnerName || !resultMethod || !resultDetails) return res.status(400).json({ error: 'Dados do resultado incompletos.' });
+    const dbClient = await pool.connect();
     try {
-    await client.query('BEGIN');
-
-    // ANTES de calcular, vamos ZERAR os pontos para esta luta.
-    // Isso garante que não estamos somando pontos de apurações antigas.
-    await client.query('UPDATE picks SET points_awarded = 0 WHERE fight_id = $1', [fightId]);
-
-    // 1. Atualiza o resultado real na tabela de lutas (como antes)
-    await client.query(
-        'UPDATE fights SET winner_name = $1, result_method = $2, result_details = $3 WHERE id = $4',
-        [winnerName, resultMethod, resultDetails, fightId]
-    );
-
-        // 2. Busca todos os palpites para esta luta
-        const picksResult = await client.query('SELECT * FROM picks WHERE fight_id = $1', [fightId]);
-        const picks = picksResult.rows;
-
-        // 3. Itera sobre cada palpite para calcular os pontos
-        for (const pick of picks) {
+        await dbClient.query('BEGIN');
+        await dbClient.query('UPDATE picks SET points_awarded = 0 WHERE fight_id = $1', [fightId]);
+        await dbClient.query('UPDATE fights SET winner_name = $1, result_method = $2, result_details = $3 WHERE id = $4', [winnerName, resultMethod, resultDetails, fightId]);
+        const picksResult = await dbClient.query('SELECT * FROM picks WHERE fight_id = $1', [fightId]);
+        for (const pick of picksResult.rows) {
             let points = 0;
-            // Regra 1: Acertou o vencedor?
             if (pick.predicted_winner_name === winnerName) {
-                points += 20; // Ganha 20 pontos
-                
-                // Regra 2: Se acertou o vencedor, acertou o método?
+                points += 20;
                 if (pick.predicted_method === resultMethod) {
-                    points += 15; // Ganha 15 pontos extras
-                    
-                    // Regra 3: Se acertou o método, acertou o detalhe?
+                    points += 15;
                     if (pick.predicted_details === resultDetails) {
-                        points += 10; // Ganha 10 pontos extras (acerto perfeito!)
+                        points += 10;
                     }
                 }
             }
-            
-            // 4. Atualiza a pontuação daquele palpite específico no banco
-            await client.query('UPDATE picks SET points_awarded = $1 WHERE id = $2', [points, pick.id]);
+            await dbClient.query('UPDATE picks SET points_awarded = $1 WHERE id = $2', [points, pick.id]);
         }
-        
-        await client.query('COMMIT'); // Finaliza a transação com sucesso
-
-        res.json({ message: `Resultados da luta ${fightId} apurados e ${picks.length} palpites pontuados.` });
-
+        await dbClient.query('COMMIT');
+        res.json({ message: `Resultados da luta ${fightId} apurados e ${picksResult.rows.length} palpites pontuados.` });
     } catch (error) {
-        await client.query('ROLLBACK'); // Desfaz tudo se der algum erro no meio do caminho
+        await dbClient.query('ROLLBACK');
         console.error('Erro ao apurar resultados:', error);
         res.status(500).json({ error: 'Erro ao apurar resultados.' });
     } finally {
-        client.release(); // Libera a conexão com o banco
+        dbClient.release();
     }
 });
 
-// ROTA DE ADMIN PARA VER TODOS OS PALPITES, AGRUPADOS POR EVENTO E USUÁRIO
 app.get('/api/admin/all-picks', verifyToken, verifyAdmin, async (req, res) => {
     try {
-        // 1. Busca todos os eventos, palpites e usuários de uma vez
         const query = `
             SELECT 
-                e.id as event_id, e.name as event_name,
-                u.id as user_id, u.username,
+                e.id as event_id, e.name as event_name, u.id as user_id, u.username,
                 p.id as pick_id, p.fight_id, p.predicted_winner_name, 
                 p.predicted_method, p.predicted_details, p.points_awarded,
                 f.winner_name as real_winner, f.result_method as real_method, f.result_details as real_details
             FROM events e
-            JOIN fights f ON e.id = f.event_id
-            JOIN picks p ON f.id = p.fight_id
-            JOIN users u ON p.user_id = u.id
+            LEFT JOIN fights f ON e.id = f.event_id
+            LEFT JOIN picks p ON f.id = p.fight_id
+            LEFT JOIN users u ON p.user_id = u.id
             ORDER BY e.id, u.username, p.fight_id;
         `;
         const allData = await pool.query(query);
-
-        // 2. Processa e agrupa os dados
-const results = {};
-for (const row of allData.rows) {
-    if (!results[row.event_id]) {
-        results[row.event_id] = { eventName: row.event_name, users: {} };
-    }
-    if (!results[row.event_id].users[row.user_id]) {
-        results[row.event_id].users[row.user_id] = {
-            username: row.username,
-            picks: [],
-            stats: {
-                totalPicks: 0, correctWinners: 0,
-                correctMethods: 0, correctDetails: 0,
-                totalPoints: 0
+        const results = {};
+        for (const row of allData.rows) {
+            if (!results[row.event_id]) {
+                results[row.event_id] = { eventName: row.event_name, users: {} };
             }
-        };
-    }
-
-    const userEventData = results[row.event_id].users[row.user_id];
-    userEventData.picks.push(row);
-
-    // Calcula as estatísticas
-    const stats = userEventData.stats;
-    stats.totalPicks++;
-    stats.totalPoints += row.points_awarded;
-    if (row.real_winner) { // Só calcula acertos se a luta foi apurada
-        // A LÓGICA DE CÁLCULO DE ACERTOS EM CASCATA
-        if (row.predicted_winner_name === row.real_winner) {
-            stats.correctWinners++;
-            if (row.predicted_method === row.real_method) {
-                stats.correctMethods++;
-                if (row.predicted_details === row.real_details) {
-                    stats.correctDetails++;
+            if (row.user_id && !results[row.event_id].users[row.user_id]) {
+                results[row.event_id].users[row.user_id] = {
+                    username: row.username, picks: [],
+                    stats: { totalPicks: 0, correctWinners: 0, correctMethods: 0, correctDetails: 0, totalPoints: 0 }
+                };
+            }
+            if (row.pick_id) {
+                const userEventData = results[row.event_id].users[row.user_id];
+                userEventData.picks.push(row);
+                const stats = userEventData.stats;
+                stats.totalPicks++;
+                stats.totalPoints += row.points_awarded;
+                if (row.real_winner) {
+                    if (row.predicted_winner_name === row.real_winner) {
+                        stats.correctWinners++;
+                        if (row.predicted_method === row.real_method) {
+                            stats.correctMethods++;
+                            if (row.predicted_details === row.real_details) {
+                                stats.correctDetails++;
+                            }
+                        }
+                    }
                 }
             }
         }
-    }
-}
-res.json(results);
+        res.json(results);
     } catch (error) {
         console.error('Erro ao buscar todos os palpites:', error);
         res.status(500).json({ error: 'Erro ao buscar dados.' });
     }
 });
 
-
-// Inicia o servidor e testa a conexão com o banco
 app.listen(PORT, async () => {
     try {
-        await pool.query('SELECT NOW()'); // Tenta executar uma consulta simples
+        await pool.query('SELECT NOW()');
         console.log(`Servidor rodando na porta ${PORT} e conectado ao banco de dados com sucesso.`);
     } catch (error) {
-        console.error('*** FALHA AO CONECTAR AO BANCO DE DADOS ***');
-        console.error(error);
+        console.error('*** FALHA AO CONECTAR AO BANCO DE DADOS ***', error);
     }
 });
