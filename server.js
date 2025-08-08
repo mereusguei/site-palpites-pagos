@@ -220,17 +220,12 @@ app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
     const { resultsArray, realFightOfTheNightId, realPerformanceOfTheNightFighter } = req.body;
     const dbClient = await pool.connect();
     try {
-    await dbClient.query('BEGIN'); // Inicia a transação
+    await dbClient.query('BEGIN');
     let eventId = null;
 
-    // --- APURAÇÃO DAS LUTAS INDIVIDUAIS ---
     if (resultsArray && resultsArray.length > 0) {
-        // Se temos lutas para apurar, pegamos o eventId da primeira
         const eventIdResult = await dbClient.query('SELECT event_id FROM fights WHERE id = $1', [resultsArray[0].fightId]);
-        if (eventIdResult.rows.length > 0) {
-            eventId = eventIdResult.rows[0].event_id;
-        }
-
+        if (eventIdResult.rows.length > 0) eventId = eventIdResult.rows[0].event_id;
         for (const result of resultsArray) {
                 const { fightId, winnerName, resultMethod, resultDetails } = result;
                 await dbClient.query('UPDATE picks SET points_awarded = 0 WHERE fight_id = $1', [fightId]);
@@ -250,39 +245,25 @@ app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
             }
         }
         if (realFightOfTheNightId && realPerformanceOfTheNightFighter) {
-        // Se ainda não temos o eventId (porque nenhuma luta foi apurada),
-        // buscamos ele a partir do ID da Luta da Noite.
         if (!eventId) {
             const eventIdResult = await dbClient.query('SELECT event_id FROM fights WHERE id = $1', [realFightOfTheNightId]);
-            if (eventIdResult.rows.length > 0) {
-                eventId = eventIdResult.rows[0].event_id;
-            }
+            if (eventIdResult.rows.length > 0) eventId = eventIdResult.rows[0].event_id;
         }
-        
-        // Se temos um eventId, podemos prosseguir com a apuração dos bônus
         if (eventId) {
-            // Zera os pontos de bônus do evento antes de recalcular
+            // SALVA os resultados reais dos bônus na tabela de eventos
+            await dbClient.query('UPDATE events SET real_fotn_fight_id = $1, real_potn_fighter_name = $2 WHERE id = $3', [realFightOfTheNightId, realPerformanceOfTheNightFighter, eventId]);
+            
+            // ZERA os pontos de bônus antigos antes de recalcular
             await dbClient.query('UPDATE bonus_picks SET points_awarded = 0 WHERE event_id = $1', [eventId]);
-
             const bonusPicksResult = await dbClient.query('SELECT * FROM bonus_picks WHERE event_id = $1', [eventId]);
             for (const bonusPick of bonusPicksResult.rows) {
                 let bonusPoints = 0;
-                if (bonusPick.fight_of_the_night_fight_id == realFightOfTheNightId) {
-                    bonusPoints += 20; // 20 pontos
-                }
-                if (bonusPick.performance_of_the_night_fighter_name === realPerformanceOfTheNightFighter) {
-                    bonusPoints += 20; // 20 pontos
-                }
+                if (bonusPick.fight_of_the_night_fight_id == realFightOfTheNightId) bonusPoints += 20;
+                if (bonusPick.performance_of_the_night_fighter_name === realPerformanceOfTheNightFighter) bonusPoints += 20;
                 await dbClient.query('UPDATE bonus_picks SET points_awarded = $1 WHERE id = $2', [bonusPoints, bonusPick.id]);
             }
-            // --- NOVA PARTE: SALVA OS RESULTADOS REAIS DOS BÔNUS ---
-    await dbClient.query(
-        'UPDATE events SET real_fotn_fight_id = $1, real_potn_fighter_name = $2 WHERE id = $3',
-        [realFightOfTheNightId, realPerformanceOfTheNightFighter, eventId]
-    );
         }
     }
-    
     await dbClient.query('COMMIT'); // Finaliza a transação com sucesso
     res.json({ message: `Apuração concluída com sucesso!` });
 
@@ -379,23 +360,40 @@ app.get('/api/rankings/accuracy', verifyToken, verifyAdmin, async (req, res) => 
     try {
         // Esta é uma consulta mais complexa que calcula tudo de uma vez
         const query = `
+    WITH UserPoints AS (
+        SELECT
+            u.id as user_id,
+            u.username,
+            COUNT(DISTINCT p.id) AS total_picks,
+            SUM(CASE WHEN f.winner_name IS NOT NULL THEN 1 ELSE 0 END) AS total_apured_picks,
+            SUM(CASE WHEN p.predicted_winner_name = f.winner_name THEN 1 ELSE 0 END) AS correct_winners,
+            SUM(CASE WHEN p.predicted_winner_name = f.winner_name AND p.predicted_method = f.result_method THEN 1 ELSE 0 END) AS correct_methods,
+            SUM(CASE WHEN p.predicted_winner_name = f.winner_name AND p.predicted_method = f.result_method AND p.predicted_details = f.result_details THEN 1 ELSE 0 END) AS correct_details,
+            COALESCE(SUM(p.points_awarded), 0) as fight_points
+        FROM users u
+        LEFT JOIN picks p ON u.id = p.user_id
+        LEFT JOIN fights f ON p.fight_id = f.id
+        WHERE u.is_admin = FALSE
+        GROUP BY u.id
+    ),
+    BonusPoints AS (
+        SELECT
+            u.id as user_id,
+            COALESCE(SUM(bp.points_awarded), 0) as bonus_points
+        FROM users u
+        LEFT JOIN bonus_picks bp ON u.id = bp.user_id
+        WHERE u.is_admin = FALSE
+        GROUP BY u.id
+    )
     SELECT
-        u.username,
-        COALESCE(SUM(p.points_awarded), 0) + COALESCE(SUM(bp.points_awarded), 0) as total_points,
-        COUNT(DISTINCT p.id) AS total_picks,
-        SUM(CASE WHEN p.predicted_winner_name = f.winner_name THEN 1 ELSE 0 END) AS correct_winners,
-        SUM(CASE WHEN p.predicted_winner_name = f.winner_name AND p.predicted_method = f.result_method THEN 1 ELSE 0 END) AS correct_methods,
-        SUM(CASE WHEN p.predicted_winner_name = f.winner_name AND p.predicted_method = f.result_method AND p.predicted_details = f.result_details THEN 1 ELSE 0 END) AS correct_details,
-        -- NOVOS CÁLCULOS PARA BÔNUS
-        SUM(CASE WHEN bp.fight_of_the_night_fight_id = e.real_fotn_fight_id THEN 1 ELSE 0 END) AS correct_fotn,
-        SUM(CASE WHEN bp.performance_of_the_night_fighter_name = e.real_potn_fighter_name THEN 1 ELSE 0 END) AS correct_potn
-    FROM users u
-    LEFT JOIN picks p ON u.id = p.user_id
-    LEFT JOIN fights f ON p.fight_id = f.id
-    LEFT JOIN events e ON f.event_id = e.id
-    LEFT JOIN bonus_picks bp ON u.id = bp.user_id AND e.id = bp.event_id
-    WHERE u.is_admin = FALSE
-    GROUP BY u.id
+        up.username,
+        up.total_picks,
+        up.correct_winners,
+        up.correct_methods,
+        up.correct_details,
+        (up.fight_points + bp.bonus_points) as total_points
+    FROM UserPoints up
+    JOIN BonusPoints bp ON up.user_id = bp.user_id
     ORDER BY total_points DESC, correct_winners DESC;
 `;
         const result = await pool.query(query);
