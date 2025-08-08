@@ -215,6 +215,26 @@ app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
         dbClient.release();
     }
 });
+// No server.js, adicione esta rota
+app.post('/api/bonus-picks', verifyToken, async (req, res) => {
+    const userId = req.user.id;
+    const { eventId, fightOfTheNight, performanceOfTheNight } = req.body;
+    
+    const query = `
+        INSERT INTO bonus_picks (user_id, event_id, fight_of_the_night_fight_id, performance_of_the_night_fighter_name)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (user_id, event_id) DO UPDATE SET
+            fight_of_the_night_fight_id = EXCLUDED.fight_of_the_night_fight_id,
+            performance_of_the_night_fighter_name = EXCLUDED.performance_of_the_night_fighter_name
+        RETURNING *;
+    `;
+    try {
+        const result = await pool.query(query, [userId, eventId, fightOfTheNight, performanceOfTheNight]);
+        res.status(201).json({ message: 'Palpites bônus salvos!', pick: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ error: 'Erro ao salvar palpites bônus.' });
+    }
+});
 app.get('/api/admin/all-picks', verifyToken, verifyAdmin, async (req, res) => {
     try {
         const query = `
