@@ -82,11 +82,29 @@ app.get('/api/events/:id', verifyToken, async (req, res) => {
     try {
         const eventResult = await pool.query('SELECT * FROM events WHERE id = $1', [eventId]);
         if (eventResult.rows.length === 0) return res.status(404).json({ error: 'Evento não encontrado.' });
+        
         const fightsResult = await pool.query('SELECT * FROM fights WHERE event_id = $1 ORDER BY id', [eventId]);
+        
         const picksResult = await pool.query('SELECT * FROM picks WHERE user_id = $1 AND fight_id IN (SELECT id FROM fights WHERE event_id = $2)', [userId, eventId]);
         const userPicks = picksResult.rows.reduce((acc, pick) => { acc[pick.fight_id] = pick; return acc; }, {});
-        res.json({ eventName: eventResult.rows[0].name, picksDeadline: eventResult.rows[0].picks_deadline, fights: fightsResult.rows, userPicks });
+
+        // --- NOVA PARTE: BUSCA OS PALPITES BÔNUS ---
+        const bonusPicksResult = await pool.query(
+            'SELECT * FROM bonus_picks WHERE user_id = $1 AND event_id = $2',
+            [userId, eventId]
+        );
+        // Pega o primeiro resultado (só pode haver um) ou um objeto vazio se não houver
+        const userBonusPicks = bonusPicksResult.rows[0] || {};
+
+        res.json({ 
+            eventName: eventResult.rows[0].name, 
+            picksDeadline: eventResult.rows[0].picks_deadline, 
+            fights: fightsResult.rows, 
+            userPicks,
+            userBonusPicks // Envia os palpites bônus para o frontend!
+        });
     } catch (error) {
+        console.error('Erro ao buscar dados do evento:', error);
         res.status(500).json({ error: 'Erro ao buscar dados do evento.' });
     }
 });
