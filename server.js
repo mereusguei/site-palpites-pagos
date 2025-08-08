@@ -275,6 +275,11 @@ app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
                 }
                 await dbClient.query('UPDATE bonus_picks SET points_awarded = $1 WHERE id = $2', [bonusPoints, bonusPick.id]);
             }
+            // --- NOVA PARTE: SALVA OS RESULTADOS REAIS DOS BÔNUS ---
+    await dbClient.query(
+        'UPDATE events SET real_fotn_fight_id = $1, real_potn_fighter_name = $2 WHERE id = $3',
+        [realFightOfTheNightId, realPerformanceOfTheNightFighter, eventId]
+    );
         }
     }
     
@@ -376,18 +381,22 @@ app.get('/api/rankings/accuracy', verifyToken, verifyAdmin, async (req, res) => 
         const query = `
     SELECT
         u.username,
-        COUNT(p.id) AS total_picks,
-        SUM(CASE WHEN f.winner_name IS NOT NULL THEN 1 ELSE 0 END) AS total_apured_picks,
+        COALESCE(SUM(p.points_awarded), 0) + COALESCE(SUM(bp.points_awarded), 0) as total_points,
+        COUNT(DISTINCT p.id) AS total_picks,
         SUM(CASE WHEN p.predicted_winner_name = f.winner_name THEN 1 ELSE 0 END) AS correct_winners,
         SUM(CASE WHEN p.predicted_winner_name = f.winner_name AND p.predicted_method = f.result_method THEN 1 ELSE 0 END) AS correct_methods,
         SUM(CASE WHEN p.predicted_winner_name = f.winner_name AND p.predicted_method = f.result_method AND p.predicted_details = f.result_details THEN 1 ELSE 0 END) AS correct_details,
-        COALESCE(SUM(p.points_awarded), 0) as total_points -- ESTA É A LINHA QUE FALTAVA
+        -- NOVOS CÁLCULOS PARA BÔNUS
+        SUM(CASE WHEN bp.fight_of_the_night_fight_id = e.real_fotn_fight_id THEN 1 ELSE 0 END) AS correct_fotn,
+        SUM(CASE WHEN bp.performance_of_the_night_fighter_name = e.real_potn_fighter_name THEN 1 ELSE 0 END) AS correct_potn
     FROM users u
-    JOIN picks p ON u.id = p.user_id
-    JOIN fights f ON p.fight_id = f.id
+    LEFT JOIN picks p ON u.id = p.user_id
+    LEFT JOIN fights f ON p.fight_id = f.id
+    LEFT JOIN events e ON f.event_id = e.id
+    LEFT JOIN bonus_picks bp ON u.id = bp.user_id AND e.id = bp.event_id
     WHERE u.is_admin = FALSE
     GROUP BY u.id
-    ORDER BY total_points DESC, correct_winners DESC, correct_methods DESC, correct_details DESC;
+    ORDER BY total_points DESC, correct_winners DESC;
 `;
         const result = await pool.query(query);
         res.json(result.rows);
