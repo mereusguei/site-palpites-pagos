@@ -423,22 +423,15 @@ app.get('/api/rankings/accuracy', verifyToken, verifyAdmin, async (req, res) => 
         res.status(500).json({ error: 'Erro ao buscar rankings de acerto.' });
     }
 });
-
-app.get('/api/admin/all-events', verifyToken, verifyAdmin, async (req, res) => {
+// Rota de Admin para buscar a lista de todos os eventos
+// Serve para o painel de admin saber quais eventos exibir para apuração.
+app.get('/api/admin/events', verifyToken, verifyAdmin, async (req, res) => {
     try {
-        const eventsResult = await pool.query('SELECT id, name FROM events ORDER BY id DESC');
-        const allEventsData = [];
-        for (const event of eventsResult.rows) {
-            const fightsResult = await pool.query('SELECT * FROM fights WHERE event_id = $1 ORDER BY id', [event.id]);
-            allEventsData.push({
-                eventId: event.id,
-                eventName: event.name,
-                fights: fightsResult.rows
-            });
-        }
-        res.json(allEventsData);
+        const result = await pool.query('SELECT id, name FROM events ORDER BY id DESC');
+        res.json(result.rows);
     } catch (error) {
-        res.status(500).json({ error: 'Erro ao buscar todos os eventos.' });
+        console.error('Erro ao buscar lista de eventos:', error);
+        res.status(500).json({ error: 'Erro ao buscar eventos.' });
     }
 });
 
