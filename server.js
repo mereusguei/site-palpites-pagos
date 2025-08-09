@@ -312,8 +312,20 @@ app.post('/api/bonus-picks', verifyToken, async (req, res) => {
 app.get('/api/admin/all-picks', verifyToken, verifyAdmin, async (req, res) => {
     try {
         const query = `
-    WITH BonusPoints AS (
-        SELECT user_id, event_id, SUM(points_awarded) as total_bonus_points
+    WITH FightPoints AS (
+        SELECT 
+            p.user_id,
+            f.event_id,
+            COALESCE(SUM(p.points_awarded), 0) as total_fight_points
+        FROM picks p
+        JOIN fights f ON p.fight_id = f.id
+        GROUP BY p.user_id, f.event_id
+    ),
+    BonusPoints AS (
+        SELECT 
+            user_id,
+            event_id,
+            COALESCE(SUM(points_awarded), 0) as total_bonus_points
         FROM bonus_picks
         GROUP BY user_id, event_id
     )
@@ -322,67 +334,61 @@ app.get('/api/admin/all-picks', verifyToken, verifyAdmin, async (req, res) => {
         p.id as pick_id, p.fight_id, p.predicted_winner_name, p.predicted_method, 
         p.predicted_details, p.points_awarded, f.winner_name as real_winner, 
         f.result_method as real_method, f.result_details as real_details,
-        bp_data.total_bonus_points
+        bp.fight_of_the_night_fight_id as bonus_fotn_pick,
+        bp.performance_of_the_night_fighter_name as bonus_potn_pick,
+        (COALESCE(fp.total_fight_points, 0) + COALESCE(bop.total_bonus_points, 0)) as total_points
     FROM events e
     LEFT JOIN fights f ON e.id = f.event_id
     LEFT JOIN picks p ON f.id = p.fight_id
     LEFT JOIN users u ON p.user_id = u.id
-    LEFT JOIN BonusPoints bp_data ON u.id = bp_data.user_id AND e.id = bp_data.event_id
+    LEFT JOIN bonus_picks bp ON u.id = bp.user_id AND e.id = bp.event_id
+    LEFT JOIN FightPoints fp ON u.id = fp.user_id AND e.id = fp.event_id
+    LEFT JOIN BonusPoints bop ON u.id = bop.user_id AND e.id = bop.event_id
     WHERE e.id = 1
-    ORDER BY e.id, u.username, p.fight_id;
+    ORDER BY u.username, p.fight_id;
 `;
         const allData = await pool.query(query);
         // 2. Processa e agrupa os dados
         const results = {};
         for (const row of allData.rows) {
-            // Cria a estrutura para o evento se não existir
-            if (!results[row.event_id]) {
-                results[row.event_id] = {
-                    eventName: row.event_name,
-                    users: {}
-                };
+    if (!results[row.event_id]) {
+        results[row.event_id] = { eventName: row.event_name, users: {} };
+    }
+    if (row.user_id && !results[row.event_id].users[row.user_id]) {
+        results[row.event_id].users[row.user_id] = {
+            username: row.username,
+            picks: [],
+            bonus_picks: { fotn_fight_id: row.bonus_fotn_pick, potn_fighter: row.bonus_potn_pick },
+            stats: { 
+                totalPicks: 0, correctWinners: 0, correctMethods: 0, correctDetails: 0, 
+                // CORREÇÃO: Pega o total de pontos dos bônus e inicia a contagem a partir dele
+                totalPoints: row.total_bonus_points || 0 
             }
-            // Cria a estrutura para o usuário dentro do evento se não existir
-            if (row.user_id && !results[row.event_id].users[row.user_id]) {
-                results[row.event_id].users[row.user_id] = {
-                    username: row.username,
-                    picks: [],
-                    bonus_picks: { // Guarda os palpites bônus
-                        fotn_fight_id: row.bonus_fotn_pick,
-                        potn_fighter: row.bonus_potn_pick
-                    },
-                    stats: {
-                        totalPicks: 0,
-                        correctWinners: 0,
-                        correctMethods: 0,
-                        correctDetails: 0,
-                        // A pontuação total agora vem diretamente da nova query
-                        totalPoints: row.total_points || 0 
-                    }
-                };
-            }
-
-            // Adiciona o palpite de luta ao usuário, se houver
-            if (row.pick_id) {
-                const userEventData = results[row.event_id].users[row.user_id];
-                userEventData.picks.push(row);
-
-                // Calcula as estatísticas de acerto (a pontuação já foi somada)
-                const stats = userEventData.stats;
-                stats.totalPicks++;
-                if (row.real_winner) { // Só calcula acertos se a luta foi apurada
-                    if (row.predicted_winner_name === row.real_winner) {
-                        stats.correctWinners++;
-                        if (row.predicted_method === row.real_method) {
-                            stats.correctMethods++;
-                            if (row.predicted_details === row.real_details) {
-                                stats.correctDetails++;
-                            }
+        };
+    }
+    if (row.pick_id) {
+        const userEventData = results[row.event_id].users[row.user_id];
+        // Evita adicionar a mesma luta múltiplas vezes por causa do JOIN
+        if (!userEventData.picks.some(p => p.pick_id === row.pick_id)) {
+            userEventData.picks.push(row);
+            const stats = userEventData.stats;
+            stats.totalPicks++;
+            // SOMA os pontos da luta ao total que já incluía os bônus
+            stats.totalPoints += row.points_awarded;
+            if (row.real_winner) {
+                if (row.predicted_winner_name === row.real_winner) {
+                    stats.correctWinners++;
+                    if (row.predicted_method === row.real_method) {
+                        stats.correctMethods++;
+                        if (row.predicted_details === row.real_details) {
+                            stats.correctDetails++;
                         }
                     }
                 }
             }
         }
+    }
+}
         res.json(results);
     } catch (error) {
         console.error('Erro ao buscar todos os palpites:', error);
