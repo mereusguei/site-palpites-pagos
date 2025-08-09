@@ -336,6 +336,7 @@ app.get('/api/admin/all-picks', verifyToken, verifyAdmin, async (req, res) => {
         f.result_method as real_method, f.result_details as real_details,
         bp.fight_of_the_night_fight_id as bonus_fotn_pick,
         bp.performance_of_the_night_fighter_name as bonus_potn_pick,
+        -- A SOMA CORRETA DOS PONTOS
         (COALESCE(fp.total_fight_points, 0) + COALESCE(bop.total_bonus_points, 0)) as total_points
     FROM events e
     LEFT JOIN fights f ON e.id = f.event_id
@@ -344,7 +345,7 @@ app.get('/api/admin/all-picks', verifyToken, verifyAdmin, async (req, res) => {
     LEFT JOIN bonus_picks bp ON u.id = bp.user_id AND e.id = bp.event_id
     LEFT JOIN FightPoints fp ON u.id = fp.user_id AND e.id = fp.event_id
     LEFT JOIN BonusPoints bop ON u.id = bop.user_id AND e.id = bop.event_id
-    WHERE e.id = 1
+    WHERE e.id = 1 AND u.is_admin = FALSE
     ORDER BY u.username, p.fight_id;
 `;
         const allData = await pool.query(query);
@@ -400,40 +401,21 @@ app.get('/api/rankings/accuracy', verifyToken, verifyAdmin, async (req, res) => 
     try {
         // Esta é uma consulta mais complexa que calcula tudo de uma vez
         const query = `
-    WITH UserPoints AS (
-        SELECT
-            u.id as user_id,
-            u.username,
-            COUNT(DISTINCT p.id) AS total_picks,
-            SUM(CASE WHEN f.winner_name IS NOT NULL THEN 1 ELSE 0 END) AS total_apured_picks,
-            SUM(CASE WHEN p.predicted_winner_name = f.winner_name THEN 1 ELSE 0 END) AS correct_winners,
-            SUM(CASE WHEN p.predicted_winner_name = f.winner_name AND p.predicted_method = f.result_method THEN 1 ELSE 0 END) AS correct_methods,
-            SUM(CASE WHEN p.predicted_winner_name = f.winner_name AND p.predicted_method = f.result_method AND p.predicted_details = f.result_details THEN 1 ELSE 0 END) AS correct_details,
-            COALESCE(SUM(p.points_awarded), 0) as fight_points
-        FROM users u
-        LEFT JOIN picks p ON u.id = p.user_id
-        LEFT JOIN fights f ON p.fight_id = f.id
-        WHERE u.is_admin = FALSE
-        GROUP BY u.id
-    ),
-    BonusPoints AS (
-        SELECT
-            u.id as user_id,
-            COALESCE(SUM(bp.points_awarded), 0) as bonus_points
-        FROM users u
-        LEFT JOIN bonus_picks bp ON u.id = bp.user_id
-        WHERE u.is_admin = FALSE
-        GROUP BY u.id
-    )
     SELECT
-        up.username,
-        up.total_picks,
-        up.correct_winners,
-        up.correct_methods,
-        up.correct_details,
-        (up.fight_points + bp.bonus_points) as total_points
-    FROM UserPoints up
-    JOIN BonusPoints bp ON up.user_id = bp.user_id
+        u.username,
+        (SELECT COALESCE(SUM(p.points_awarded), 0) + COALESCE(SUM(bp.points_awarded), 0) FROM picks p LEFT JOIN bonus_picks bp ON p.user_id = bp.user_id WHERE p.user_id = u.id) as total_points,
+        COUNT(DISTINCT p.id) AS total_picks,
+        SUM(CASE WHEN p.predicted_winner_name = f.winner_name THEN 1 ELSE 0 END) AS correct_winners,
+        SUM(CASE WHEN p.predicted_winner_name = f.winner_name AND p.predicted_method = f.result_method THEN 1 ELSE 0 END) AS correct_methods,
+        SUM(CASE WHEN p.predicted_winner_name = f.winner_name AND p.predicted_method = f.result_method AND p.predicted_details = f.result_details THEN 1 ELSE 0 END) AS correct_details,
+        -- CÁLCULOS DE BÔNUS CORRIGIDOS
+        COALESCE((SELECT SUM(CASE WHEN bp.fight_of_the_night_fight_id = e.real_fotn_fight_id THEN 1 ELSE 0 END) FROM bonus_picks bp JOIN events e ON bp.event_id = e.id WHERE bp.user_id = u.id), 0) AS correct_fotn,
+        COALESCE((SELECT SUM(CASE WHEN bp.performance_of_the_night_fighter_name = e.real_potn_fighter_name THEN 1 ELSE 0 END) FROM bonus_picks bp JOIN events e ON bp.event_id = e.id WHERE bp.user_id = u.id), 0) AS correct_potn
+    FROM users u
+    LEFT JOIN picks p ON u.id = p.user_id
+    LEFT JOIN fights f ON p.fight_id = f.id
+    WHERE u.is_admin = FALSE AND f.winner_name IS NOT NULL
+    GROUP BY u.id
     ORDER BY total_points DESC, correct_winners DESC;
 `;
         const result = await pool.query(query);
