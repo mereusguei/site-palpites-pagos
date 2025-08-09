@@ -424,6 +424,24 @@ app.get('/api/rankings/accuracy', verifyToken, verifyAdmin, async (req, res) => 
     }
 });
 
+app.get('/api/admin/all-events', verifyToken, verifyAdmin, async (req, res) => {
+    try {
+        const eventsResult = await pool.query('SELECT id, name FROM events ORDER BY id DESC');
+        const allEventsData = [];
+        for (const event of eventsResult.rows) {
+            const fightsResult = await pool.query('SELECT * FROM fights WHERE event_id = $1 ORDER BY id', [event.id]);
+            allEventsData.push({
+                eventId: event.id,
+                eventName: event.name,
+                fights: fightsResult.rows
+            });
+        }
+        res.json(allEventsData);
+    } catch (error) {
+        res.status(500).json({ error: 'Erro ao buscar todos os eventos.' });
+    }
+});
+
 // Inicia o servidor
 app.listen(PORT, async () => {
     try {
