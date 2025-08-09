@@ -94,12 +94,15 @@ app.get('/api/events/:id', verifyToken, async (req, res) => {
         const userBonusPicks = bonusPicksResult.rows[0] || {};
 
         res.json({ 
-            eventName: eventResult.rows[0].name, 
-            picksDeadline: eventResult.rows[0].picks_deadline, 
-            fights: fightsResult.rows, 
-            userPicks,
-            userBonusPicks // Envia os palpites bônus para o frontend!
-        });
+    eventName: eventResult.rows[0].name, 
+    picksDeadline: eventResult.rows[0].picks_deadline, 
+    fights: fightsResult.rows, 
+    userPicks,
+    userBonusPicks,
+    // --- NOVOS CAMPOS ADICIONADOS ---
+    realFotnFightId: eventResult.rows[0].real_fotn_fight_id,
+    realPotnFighterName: eventResult.rows[0].real_potn_fighter_name
+});
     } catch (error) {
         console.error('Erro ao buscar dados do evento:', error);
         res.status(500).json({ error: 'Erro ao buscar dados do evento.' });
