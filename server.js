@@ -315,21 +315,21 @@ app.get('/api/admin/all-picks', verifyToken, verifyAdmin, async (req, res) => {
         SELECT 
             e.id as event_id, e.name as event_name, u.id as user_id, u.username,
             p.id as pick_id, p.fight_id, p.predicted_winner_name, p.predicted_method, 
-            p.predicted_details, p.points_awarded as fight_points,
-            bp.points_awarded as bonus_points,
+            p.predicted_details, p.points_awarded, -- Mantemos os pontos individuais aqui
             f.winner_name as real_winner, f.result_method as real_method, f.result_details as real_details,
             bp.fight_of_the_night_fight_id as bonus_fotn_pick,
             bp.performance_of_the_night_fighter_name as bonus_potn_pick
-        FROM users u
-        LEFT JOIN picks p ON u.id = p.user_id
-        LEFT JOIN fights f ON p.fight_id = f.id
-        LEFT JOIN events e ON f.event_id = e.id
+        FROM events e
+        LEFT JOIN fights f ON e.id = f.event_id
+        LEFT JOIN picks p ON f.id = p.fight_id
+        LEFT JOIN users u ON p.user_id = u.id
         LEFT JOIN bonus_picks bp ON u.id = bp.user_id AND e.id = bp.event_id
         WHERE e.id = 1 AND u.is_admin = FALSE
         ORDER BY u.username, p.fight_id;
     `;
     const allData = await pool.query(query);
-    
+
+    // Agora, processamos os dados para calcular o total de pontos
     const results = {};
     for (const row of allData.rows) {
         if (!results[row.event_id]) {
@@ -339,21 +339,17 @@ app.get('/api/admin/all-picks', verifyToken, verifyAdmin, async (req, res) => {
             results[row.event_id].users[row.user_id] = {
                 username: row.username,
                 picks: [],
-                bonus_picks: {
-                    fotn_fight_id: row.bonus_fotn_pick,
-                    potn_fighter: row.bonus_potn_pick
-                },
-                stats: { totalPicks: 0, correctWinners: 0, correctMethods: 0, correctDetails: 0, totalPoints: row.bonus_points || 0 }
+                bonus_picks: { fotn_fight_id: row.bonus_fotn_pick, potn_fighter: row.bonus_potn_pick },
+                stats: { totalPicks: 0, correctWinners: 0, correctMethods: 0, correctDetails: 0, totalPoints: 0 }
             };
         }
         if (row.pick_id) {
             const userEventData = results[row.event_id].users[row.user_id];
-            // Evita adicionar a mesma luta múltiplas vezes se o JOIN duplicar
             if (!userEventData.picks.some(p => p.pick_id === row.pick_id)) {
                 userEventData.picks.push(row);
                 const stats = userEventData.stats;
                 stats.totalPicks++;
-                stats.totalPoints += row.fight_points || 0;
+                // A pontuação individual da luta (points_awarded) JÁ ESTÁ EM CADA `row`
                 if (row.real_winner) {
                     if (row.predicted_winner_name === row.real_winner) {
                         stats.correctWinners++;
@@ -368,6 +364,21 @@ app.get('/api/admin/all-picks', verifyToken, verifyAdmin, async (req, res) => {
             }
         }
     }
+
+    // Loop final para somar os pontos totais corretamente
+    for (const eventId in results) {
+        for (const userId in results[eventId].users) {
+            const user = results[eventId].users[userId];
+            const totalFightPoints = user.picks.reduce((sum, pick) => sum + (pick.points_awarded || 0), 0);
+            
+            // Precisamos buscar os pontos de bônus separadamente para garantir a soma correta
+            const bonusPointsResult = await pool.query('SELECT COALESCE(SUM(points_awarded), 0) as total_bonus FROM bonus_picks WHERE user_id = $1 AND event_id = $2', [userId, eventId]);
+            const totalBonusPoints = parseInt(bonusPointsResult.rows[0].total_bonus, 10);
+            
+            user.stats.totalPoints = totalFightPoints + totalBonusPoints;
+        }
+    }
+
     res.json(results);
     } catch (error) {
         console.error('Erro ao buscar todos os palpites:', error);
