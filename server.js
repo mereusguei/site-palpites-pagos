@@ -180,21 +180,54 @@ app.get('/api/rankings/general', verifyToken, async (req, res) => {
 
 // --- ROTAS DE PAGAMENTO ---
 app.post('/api/create-payment', verifyToken, async (req, res) => {
-    const { eventId, eventName } = req.body;
+    const { eventId } = req.body; // Só precisamos do ID do evento
     const userId = req.user.id;
+
     try {
-        const preference = new Preference(client);
+        // 1. Busca os dados mais recentes do evento diretamente do banco
+        const eventResult = await pool.query('SELECT name, picks_deadline FROM events WHERE id = $1', [eventId]);
+        if (eventResult.rows.length === 0) {
+            return res.status(404).json({ error: "Evento não encontrado para criar pagamento." });
+        }
+        const event = eventResult.rows[0];
+        const eventName = event.name;
+
+        // 2. Verifica se o prazo para palpites (e pagamentos) já não expirou
+        const deadlineTime = new Date(event.picks_deadline).getTime();
+        const now = new Date().getTime();
+        if (now > deadlineTime) {
+            return res.status(400).json({ error: "O prazo para pagamentos deste evento já encerrou." });
+        }
+
+        // 3. Cria a preferência de pagamento
+        const preference = new Preference(mpClient);
         const result = await preference.create({
             body: {
-                items: [{ id: `evt-${eventId}`, title: `Acesso aos Palpites: ${eventName}`, quantity: 1, unit_price: 0.05, currency_id: 'BRL' }],
-                back_urls: { success: 'https://mereusguei.github.io/payment-success.html', failure: 'https://mereusguei.github.io/', pending: 'https://mereusguei.github.io/' },
+                items: [{
+                    id: `evt-${eventId}`,
+                    title: `Acesso aos Palpites: ${eventName}`,
+                    quantity: 1,
+                    unit_price: 5.00, // Lembre-se de voltar para 5.00 quando quiser
+                    currency_id: 'BRL',
+                }],
+                back_urls: { 
+                    success: 'https://mereusguei.github.io/payment-success.html', 
+                    failure: 'https://mereusguei.github.io/', 
+                    pending: 'https://mereusguei.github.io/' 
+                },
                 auto_return: 'approved',
                 metadata: { user_id: userId, event_id: eventId },
-                notification_url: `https://site-palpites-pagos.vercel.app/api/payment-webhook`
+                notification_url: `https://site-palpites-pagos.vercel.app/api/payment-webhook`,
+                // Adiciona uma data de expiração para o link de pagamento
+                expires: true,
+                expiration_date_to: event.picks_deadline // O link expira junto com o prazo do evento
             }
         });
+
         res.json({ checkoutUrl: result.init_point });
+
     } catch (error) {
+        console.error('Erro ao criar preferência de pagamento:', error);
         res.status(500).json({ error: 'Não foi possível iniciar o pagamento.' });
     }
 });
