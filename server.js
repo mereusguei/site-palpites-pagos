@@ -10,11 +10,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const mpClient = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
-const JWT_SECRET = process.env.JWT_SECRET || 'sua-chave-secreta-super-dificil-de-adivinhar-123';
+    const JWT_SECRET = process.env.JWT_SECRET || 'sua-chave-secreta-super-dificil-de-adivinhar-123';
 
 app.use(cors());
 app.use(express.json());
 
+// Middleware de verificação de Admin
 const verifyToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -26,7 +27,7 @@ const verifyToken = (req, res, next) => {
     });
 };
 
-// Middleware de verificação de Admin
+
 const verifyAdmin = async (req, res, next) => {
     try {
         const userResult = await pool.query('SELECT is_admin FROM users WHERE id = $1', [req.user.id]);
@@ -336,7 +337,10 @@ app.post('/api/admin/events', verifyToken, verifyAdmin, async (req, res) => {
             'INSERT INTO events (name, event_date, picks_deadline) VALUES ($1, $2, $3) RETURNING *',
             [name, eventDate, picksDeadline]
         );
-        res.status(201).json(result.rows[0]);
+        res.status(201).json({ 
+    message: 'Evento criado com sucesso!', 
+    event: result.rows[0] 
+});
     } catch (error) {
         console.error('Erro ao criar evento:', error);
         res.status(500).json({ error: 'Erro interno do servidor.' });
@@ -355,7 +359,10 @@ app.post('/api/admin/fights', verifyToken, verifyAdmin, async (req, res) => {
              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
             [event_id, fighter1_name, fighter1_record, fighter1_img, fighter2_name, fighter2_record, fighter2_img]
         );
-        res.status(201).json(result.rows[0]);
+        res.status(201).json({ 
+    message: 'Luta adicionada com sucesso!', 
+    fight: result.rows[0] 
+});
     } catch (error) {
         console.error('Erro ao adicionar luta:', error);
         res.status(500).json({ error: 'Erro interno do servidor.' });
