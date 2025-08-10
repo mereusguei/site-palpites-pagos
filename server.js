@@ -379,6 +379,66 @@ app.post('/api/admin/fights', verifyToken, verifyAdmin, async (req, res) => {
         res.status(500).json({ error: 'Erro interno do servidor.' });
     }
 });
+// ROTA PARA ATUALIZAR OS DETALHES DE UM EVENTO
+app.put('/api/admin/events/:eventId', verifyToken, verifyAdmin, async (req, res) => {
+    const { eventId } = req.params;
+    const { name, eventDate, picksDeadline } = req.body;
+    try {
+        const result = await pool.query(
+            'UPDATE events SET name = $1, event_date = $2, picks_deadline = $3 WHERE id = $4 RETURNING *',
+            [name, eventDate, picksDeadline, eventId]
+        );
+        res.json({ message: 'Evento atualizado com sucesso!', event: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ error: 'Erro ao atualizar evento.' });
+    }
+});
+
+// ROTA PARA ATUALIZAR OS DETALHES DE UMA LUTA
+app.put('/api/admin/fights/:fightId', verifyToken, verifyAdmin, async (req, res) => {
+    const { fightId } = req.params;
+    const { fighter1_name, fighter1_record, fighter1_img, fighter2_name, fighter2_record, fighter2_img } = req.body;
+    try {
+        const result = await pool.query(
+            `UPDATE fights SET fighter1_name = $1, fighter1_record = $2, fighter1_img = $3, 
+             fighter2_name = $4, fighter2_record = $5, fighter2_img = $6 
+             WHERE id = $7 RETURNING *`,
+            [fighter1_name, fighter1_record, fighter1_img, fighter2_name, fighter2_record, fighter2_img, fightId]
+        );
+        res.json({ message: 'Luta atualizada com sucesso!', fight: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ error: 'Erro ao atualizar luta.' });
+    }
+});
+
+// ROTA PARA ATUALIZAR A ORDEM DAS LUTAS
+app.put('/api/admin/fights/order', verifyToken, verifyAdmin, async (req, res) => {
+    const { fightOrderArray } = req.body; // Espera um array de IDs [3, 1, 2, 4]
+    if (!fightOrderArray || !Array.isArray(fightOrderArray)) {
+        return res.status(400).json({ error: 'Formato de ordem inválido.' });
+    }
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        // Adiciona uma coluna 'fight_order' se ela não existir
+        await client.query(`
+            ALTER TABLE fights ADD COLUMN IF NOT EXISTS fight_order INTEGER DEFAULT 0;
+        `);
+        // Atualiza a ordem de cada luta
+        for (let i = 0; i < fightOrderArray.length; i++) {
+            const fightId = fightOrderArray[i];
+            const order = i + 1; // A ordem é a posição no array
+            await client.query('UPDATE fights SET fight_order = $1 WHERE id = $2', [order, fightId]);
+        }
+        await client.query('COMMIT');
+        res.json({ message: 'Ordem das lutas atualizada com sucesso!' });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        res.status(500).json({ error: 'Erro ao atualizar a ordem das lutas.' });
+    } finally {
+        client.release();
+    }
+});
 
 // ROTA PARA REMOVER UMA LUTA ESPECÍFICA
 app.delete('/api/admin/fights/:fightId', verifyToken, verifyAdmin, async (req, res) => {
