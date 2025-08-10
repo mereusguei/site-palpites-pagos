@@ -257,30 +257,41 @@ app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
     const { resultsArray, realFightOfTheNightId, realPerformanceOfTheNightFighter } = req.body;
     const dbClient = await pool.connect();
     try {
-    await dbClient.query('BEGIN');
+    await dbClient.query('BEGIN'); // Inicia a transação
     let eventId = null;
 
+    // --- APURAÇÃO DAS LUTAS INDIVIDUAIS ---
     if (resultsArray && resultsArray.length > 0) {
+        // Pega o eventId da primeira luta que está sendo apurada/corrigida
         const eventIdResult = await dbClient.query('SELECT event_id FROM fights WHERE id = $1', [resultsArray[0].fightId]);
-        if (eventIdResult.rows.length > 0) eventId = eventIdResult.rows[0].event_id;
+        if (eventIdResult.rows.length > 0) {
+            eventId = eventIdResult.rows[0].event_id;
+        }
+
         for (const result of resultsArray) {
-                const { fightId, winnerName, resultMethod, resultDetails } = result;
-                await dbClient.query('UPDATE picks SET points_awarded = 0 WHERE fight_id = $1', [fightId]);
-                await dbClient.query('UPDATE fights SET winner_name = $1, result_method = $2, result_details = $3 WHERE id = $4', [winnerName, resultMethod, resultDetails, fightId]);
-                const picksResult = await dbClient.query('SELECT * FROM picks WHERE fight_id = $1', [fightId]);
-                for (const pick of picksResult.rows) {
-                    let points = 0;
-                    if (pick.predicted_winner_name === winnerName) {
-                        points += 20;
-                        if (pick.predicted_method === resultMethod) {
-                            points += 15;
-                            if (pick.predicted_details === resultDetails) { points += 10; }
+            const { fightId, winnerName, resultMethod, resultDetails } = result;
+            
+            // Zera os pontos da luta antes de recalcular
+            await dbClient.query('UPDATE picks SET points_awarded = 0 WHERE fight_id = $1', [fightId]);
+            // Atualiza o resultado real da luta
+            await dbClient.query('UPDATE fights SET winner_name = $1, result_method = $2, result_details = $3 WHERE id = $4', [winnerName, resultMethod, resultDetails, fightId]);
+
+            const picksResult = await dbClient.query('SELECT * FROM picks WHERE fight_id = $1', [fightId]);
+            for (const pick of picksResult.rows) {
+                let points = 0;
+                if (pick.predicted_winner_name === winnerName) {
+                    points += 20;
+                    if (pick.predicted_method === resultMethod) {
+                        points += 15;
+                        if (pick.predicted_details === resultDetails) {
+                            points += 10;
                         }
                     }
-                    await dbClient.query('UPDATE picks SET points_awarded = $1 WHERE id = $2', [points, pick.id]);
                 }
+                await dbClient.query('UPDATE picks SET points_awarded = $1 WHERE id = $2', [points, pick.id]);
             }
         }
+    }
         if (realFightOfTheNightId && realPerformanceOfTheNightFighter) {
         if (!eventId) {
             const eventIdResult = await dbClient.query('SELECT event_id FROM fights WHERE id = $1', [realFightOfTheNightId]);
@@ -315,15 +326,15 @@ app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
         }
     }
 }
-    await dbClient.query('COMMIT'); // Finaliza a transação com sucesso
+    await dbClient.query('COMMIT'); // Finaliza a transação
     res.json({ message: `Apuração concluída com sucesso!` });
 
 } catch (error) {
-    await dbClient.query('ROLLBACK'); // Desfaz tudo em caso de erro
+    await dbClient.query('ROLLBACK');
     console.error('Erro ao apurar resultados:', error);
     res.status(500).json({ error: 'Erro ao apurar resultados.' });
 } finally {
-    dbClient.release(); // Libera a conexão com o banco
+    dbClient.release();
 }
 });
 // ROTA PARA CRIAR UM NOVO EVENTO
