@@ -369,9 +369,49 @@ app.post('/api/admin/fights', verifyToken, verifyAdmin, async (req, res) => {
     }
 });
 
-// Rota para remover eventos e lutas (vamos implementar a lógica depois, se necessário)
-// app.delete('/api/admin/events/:id', ...);
-// app.delete('/api/admin/fights/:id', ...);
+// ROTA PARA REMOVER UMA LUTA ESPECÍFICA
+app.delete('/api/admin/fights/:fightId', verifyToken, verifyAdmin, async (req, res) => {
+    const { fightId } = req.params;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        // Apaga os palpites associados a esta luta primeiro
+        await client.query('DELETE FROM picks WHERE fight_id = $1', [fightId]);
+        // Agora apaga a luta
+        await client.query('DELETE FROM fights WHERE id = $1', [fightId]);
+        await client.query('COMMIT');
+        res.json({ message: `Luta ID ${fightId} e todos os seus palpites foram removidos.` });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error(`Erro ao remover luta ${fightId}:`, error);
+        res.status(500).json({ error: 'Erro ao remover a luta.' });
+    } finally {
+        client.release();
+    }
+});
+
+// ROTA PARA REMOVER UM EVENTO INTEIRO (E TUDO ASSOCIADO A ELE)
+app.delete('/api/admin/events/:eventId', verifyToken, verifyAdmin, async (req, res) => {
+    const { eventId } = req.params;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        // Apaga em cascata, na ordem de dependência
+        await client.query('DELETE FROM bonus_picks WHERE event_id = $1', [eventId]);
+        await client.query('DELETE FROM picks WHERE fight_id IN (SELECT id FROM fights WHERE event_id = $1)', [eventId]);
+        await client.query('DELETE FROM payments WHERE event_id = $1', [eventId]);
+        await client.query('DELETE FROM fights WHERE event_id = $1', [eventId]);
+        await client.query('DELETE FROM events WHERE id = $1', [eventId]);
+        await client.query('COMMIT');
+        res.json({ message: `Evento ID ${eventId} e todos os dados associados (lutas, palpites, pagamentos) foram removidos.` });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error(`Erro ao remover evento ${eventId}:`, error);
+        res.status(500).json({ error: 'Erro ao remover o evento.' });
+    } finally {
+        client.release();
+    }
+});
 
 // No server.js, adicione esta rota
 app.post('/api/bonus-picks', verifyToken, async (req, res) => {
