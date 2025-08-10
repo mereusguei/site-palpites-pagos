@@ -251,7 +251,7 @@ app.post('/api/payment-webhook', async (req, res) => {
     }
 });
 
-// --- ROTA DE ADMIN CORRIGIDA ---
+// --- ROTAS DE ADMIN CORRIGIDA ---
 app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
     const { resultsArray, realFightOfTheNightId, realPerformanceOfTheNightFighter } = req.body;
     const dbClient = await pool.connect();
@@ -325,6 +325,47 @@ app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
     dbClient.release(); // Libera a conexão com o banco
 }
 });
+// ROTA PARA CRIAR UM NOVO EVENTO
+app.post('/api/admin/events', verifyToken, verifyAdmin, async (req, res) => {
+    const { name, eventDate, picksDeadline } = req.body;
+    if (!name || !eventDate || !picksDeadline) {
+        return res.status(400).json({ error: 'Todos os campos do evento são obrigatórios.' });
+    }
+    try {
+        const result = await pool.query(
+            'INSERT INTO events (name, event_date, picks_deadline) VALUES ($1, $2, $3) RETURNING *',
+            [name, eventDate, picksDeadline]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        console.error('Erro ao criar evento:', error);
+        res.status(500).json({ error: 'Erro interno do servidor.' });
+    }
+});
+
+// ROTA PARA ADICIONAR UMA LUTA A UM EVENTO
+app.post('/api/admin/fights', verifyToken, verifyAdmin, async (req, res) => {
+    const { event_id, fighter1_name, fighter1_record, fighter1_img, fighter2_name, fighter2_record, fighter2_img } = req.body;
+    if (!event_id || !fighter1_name || !fighter2_name) {
+        return res.status(400).json({ error: 'ID do evento e nome dos lutadores são obrigatórios.' });
+    }
+    try {
+        const result = await pool.query(
+            `INSERT INTO fights (event_id, fighter1_name, fighter1_record, fighter1_img, fighter2_name, fighter2_record, fighter2_img) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [event_id, fighter1_name, fighter1_record, fighter1_img, fighter2_name, fighter2_record, fighter2_img]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        console.error('Erro ao adicionar luta:', error);
+        res.status(500).json({ error: 'Erro interno do servidor.' });
+    }
+});
+
+// Rota para remover eventos e lutas (vamos implementar a lógica depois, se necessário)
+// app.delete('/api/admin/events/:id', ...);
+// app.delete('/api/admin/fights/:id', ...);
+
 // No server.js, adicione esta rota
 app.post('/api/bonus-picks', verifyToken, async (req, res) => {
     const userId = req.user.id;
