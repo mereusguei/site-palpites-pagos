@@ -410,14 +410,13 @@ app.put('/api/admin/fights/:fightId', verifyToken, verifyAdmin, async (req, res)
     const client = await pool.connect();
 
     try {
-        await client.query('BEGIN'); // Inicia a transação
+        await client.query('BEGIN');
 
-        // 1. Pega os dados ANTIGOS da luta antes de atualizar
         const oldFightResult = await client.query('SELECT * FROM fights WHERE id = $1', [fightId]);
         if (oldFightResult.rows.length === 0) throw new Error('Luta não encontrada.');
         const oldData = oldFightResult.rows[0];
 
-        // 2. Atualiza a luta na tabela 'fights' com os NOVOS dados
+        // Atualiza a luta com os novos dados
         const updatedFightResult = await client.query(
             `UPDATE fights SET fighter1_name = $1, fighter1_record = $2, fighter1_img = $3, 
              fighter2_name = $4, fighter2_record = $5, fighter2_img = $6 
@@ -426,7 +425,6 @@ app.put('/api/admin/fights/:fightId', verifyToken, verifyAdmin, async (req, res)
         );
         const updatedFight = updatedFightResult.rows[0];
 
-        // 3. Verifica se os nomes dos lutadores mudaram e atualiza em cascata
         const nameChanges = [];
         if (oldData.fighter1_name !== newData.fighter1_name) nameChanges.push({ old: oldData.fighter1_name, new: newData.fighter1_name });
         if (oldData.fighter2_name !== newData.fighter2_name) nameChanges.push({ old: oldData.fighter2_name, new: newData.fighter2_name });
@@ -435,18 +433,19 @@ app.put('/api/admin/fights/:fightId', verifyToken, verifyAdmin, async (req, res)
             await client.query('UPDATE picks SET predicted_winner_name = $1 WHERE predicted_winner_name = $2', [change.new, change.old]);
             await client.query('UPDATE bonus_picks SET performance_of_the_night_fighter_name = $1 WHERE performance_of_the_night_fighter_name = $2', [change.new, change.old]);
             await client.query('UPDATE events SET real_potn_fighter_name = $1 WHERE real_potn_fighter_name = $2', [change.new, change.old]);
-            // Importante: atualiza o vencedor real, se já tiver sido apurado com o nome antigo
-            if (oldData.winner_name === change.old) {
+            // CORREÇÃO: Atualiza o winner_name na LUTA ATUALIZADA
+            if (updatedFight.winner_name === change.old) {
+                updatedFight.winner_name = change.new; // Atualiza o objeto em memória para a reapuração
                 await client.query('UPDATE fights SET winner_name = $1 WHERE id = $2', [change.new, fightId]);
             }
         }
 
-        // --- NOVA PARTE: REAPURA OS PONTOS AUTOMATICAMENTE ---
-        // Se a luta já tinha um resultado, vamos recalcular os pontos para garantir consistência
+        // --- REAPURAÇÃO AUTOMÁTICA E CORRIGIDA ---
         if (updatedFight.winner_name) {
             const picksToRescore = await client.query('SELECT * FROM picks WHERE fight_id = $1', [fightId]);
             for (const pick of picksToRescore.rows) {
                 let points = 0;
+                // Usa os dados do 'updatedFight' que acabamos de atualizar
                 if (pick.predicted_winner_name === updatedFight.winner_name) {
                     points += 20;
                     if (pick.predicted_method === updatedFight.result_method) {
@@ -460,7 +459,7 @@ app.put('/api/admin/fights/:fightId', verifyToken, verifyAdmin, async (req, res)
             }
         }
 
-        await client.query('COMMIT'); // Confirma todas as alterações
+        await client.query('COMMIT');
         res.json({ message: 'Luta e todos os registros associados atualizados com sucesso!', fight: updatedFight });
 
     } catch (error) {
