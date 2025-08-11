@@ -364,88 +364,74 @@ app.post('/api/payment-webhook', async (req, res) => {
 
 // --- ROTAS DE ADMIN CORRIGIDA ---
 app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
-    const { resultsArray, realFightOfTheNightId, realPerformanceOfTheNightFighter } = req.body;
+    // CORREÇÃO: Pega o eventId diretamente do corpo da requisição
+    const { eventId, resultsArray, realFightOfTheNightId, realPerformanceOfTheNightFighter } = req.body;
     const dbClient = await pool.connect();
+    
     try {
-    await dbClient.query('BEGIN'); // Inicia a transação
-    let eventId = null;
+        await dbClient.query('BEGIN');
 
-    // --- APURAÇÃO DAS LUTAS INDIVIDUAIS ---
-    if (resultsArray && resultsArray.length > 0) {
-        // Pega o eventId da primeira luta que está sendo apurada/corrigida
-        const eventIdResult = await dbClient.query('SELECT event_id FROM fights WHERE id = $1', [resultsArray[0].fightId]);
-        if (eventIdResult.rows.length > 0) {
-            eventId = eventIdResult.rows[0].event_id;
-        }
+        // Apuração de Lutas (só executa se houver lutas para apurar)
+        if (resultsArray && resultsArray.length > 0) {
+            for (const result of resultsArray) {
+                const { fightId, winnerName, resultMethod, resultDetails } = result;
+                
+                await dbClient.query('UPDATE picks SET points_awarded = 0 WHERE fight_id = $1', [fightId]);
+                await dbClient.query('UPDATE fights SET winner_name = $1, result_method = $2, result_details = $3 WHERE id = $4', [winnerName, resultMethod, resultDetails, fightId]);
 
-        for (const result of resultsArray) {
-            const { fightId, winnerName, resultMethod, resultDetails } = result;
-            
-            // Zera os pontos da luta antes de recalcular
-            await dbClient.query('UPDATE picks SET points_awarded = 0 WHERE fight_id = $1', [fightId]);
-            // Atualiza o resultado real da luta
-            await dbClient.query('UPDATE fights SET winner_name = $1, result_method = $2, result_details = $3 WHERE id = $4', [winnerName, resultMethod, resultDetails, fightId]);
-
-            const picksResult = await dbClient.query('SELECT * FROM picks WHERE fight_id = $1', [fightId]);
-            for (const pick of picksResult.rows) {
-                let points = 0;
-                if (pick.predicted_winner_name === winnerName) {
-                    points += 20;
-                    if (pick.predicted_method === resultMethod) {
-                        points += 15;
-                        if (pick.predicted_details === resultDetails) {
-                            points += 10;
+                const picksResult = await dbClient.query('SELECT * FROM picks WHERE fight_id = $1', [fightId]);
+                for (const pick of picksResult.rows) {
+                    let points = 0;
+                    if (pick.predicted_winner_name === winnerName) {
+                        points += 20;
+                        if (pick.predicted_method === resultMethod) {
+                            points += 15;
+                            if (pick.predicted_details === resultDetails) {
+                                points += 10;
+                            }
                         }
                     }
+                    await dbClient.query('UPDATE picks SET points_awarded = $1 WHERE id = $2', [points, pick.id]);
                 }
-                await dbClient.query('UPDATE picks SET points_awarded = $1 WHERE id = $2', [points, pick.id]);
             }
         }
-    }
-        if (realFightOfTheNightId && realPerformanceOfTheNightFighter) {
-        if (!eventId) {
-            const eventIdResult = await dbClient.query('SELECT event_id FROM fights WHERE id = $1', [realFightOfTheNightId]);
-            if (eventIdResult.rows.length > 0) eventId = eventIdResult.rows[0].event_id;
+
+        // Apuração de Bônus (só executa se houver bônus para apurar E se tivermos o eventId)
+        if (eventId && realFightOfTheNightId && realPerformanceOfTheNightFighter) {
+            await dbClient.query(
+                'UPDATE events SET real_fotn_fight_id = $1, real_potn_fighter_name = $2 WHERE id = $3',
+                [
+                    realFightOfTheNightId === 'NONE' ? null : realFightOfTheNightId, 
+                    realPerformanceOfTheNightFighter === 'NONE' ? null : realPerformanceOfTheNightFighter, 
+                    eventId
+                ]
+            );
+            
+            await dbClient.query('UPDATE bonus_picks SET points_awarded = 0 WHERE event_id = $1', [eventId]);
+            const bonusPicksResult = await dbClient.query('SELECT * FROM bonus_picks WHERE event_id = $1', [eventId]);
+
+            for (const bonusPick of bonusPicksResult.rows) {
+                let bonusPoints = 0;
+                if (realFightOfTheNightId !== 'NONE' && bonusPick.fight_of_the_night_fight_id == realFightOfTheNightId) {
+                    bonusPoints += 20;
+                }
+                if (realPerformanceOfTheNightFighter !== 'NONE' && bonusPick.performance_of_the_night_fighter_name === realPerformanceOfTheNightFighter) {
+                    bonusPoints += 20;
+                }
+                await dbClient.query('UPDATE bonus_picks SET points_awarded = $1 WHERE id = $2', [bonusPoints, bonusPick.id]);
+            }
         }
-        if (eventId) {
-        // Salva os resultados reais dos bônus na tabela de eventos
-        await dbClient.query(
-            'UPDATE events SET real_fotn_fight_id = $1, real_potn_fighter_name = $2 WHERE id = $3',
-            // Se for "NONE", salva NULL no banco, senão salva o valor
-            [
-                realFightOfTheNightId === 'NONE' ? null : realFightOfTheNightId, 
-                realPerformanceOfTheNightFighter === 'NONE' ? null : realPerformanceOfTheNightFighter, 
-                eventId
-            ]
-        );
         
-        // Zera os pontos de bônus antes de recalcular
-        await dbClient.query('UPDATE bonus_picks SET points_awarded = 0 WHERE event_id = $1', [eventId]);
-        const bonusPicksResult = await dbClient.query('SELECT * FROM bonus_picks WHERE event_id = $1', [eventId]);
+        await dbClient.query('COMMIT');
+        res.json({ message: `Apuração para o evento ${eventId} concluída com sucesso!` });
 
-        for (const bonusPick of bonusPicksResult.rows) {
-            let bonusPoints = 0;
-            // Só calcula pontos se o bônus real NÃO for "NONE"
-            if (realFightOfTheNightId !== 'NONE' && bonusPick.fight_of_the_night_fight_id == realFightOfTheNightId) {
-                bonusPoints += 20;
-            }
-            if (realPerformanceOfTheNightFighter !== 'NONE' && bonusPick.performance_of_the_night_fighter_name === realPerformanceOfTheNightFighter) {
-                bonusPoints += 20;
-            }
-            await dbClient.query('UPDATE bonus_picks SET points_awarded = $1 WHERE id = $2', [bonusPoints, bonusPick.id]);
-        }
+    } catch (error) {
+        await dbClient.query('ROLLBACK');
+        console.error('Erro ao apurar resultados:', error);
+        res.status(500).json({ error: 'Erro ao apurar resultados.' });
+    } finally {
+        dbClient.release();
     }
-}
-    await dbClient.query('COMMIT'); // Finaliza a transação
-    res.json({ message: `Apuração concluída com sucesso!` });
-
-} catch (error) {
-    await dbClient.query('ROLLBACK');
-    console.error('Erro ao apurar resultados:', error);
-    res.status(500).json({ error: 'Erro ao apurar resultados.' });
-} finally {
-    dbClient.release();
-}
 });
 // ROTA PARA CRIAR UM NOVO EVENTO
 app.post('/api/admin/events', verifyToken, verifyAdmin, async (req, res) => {
