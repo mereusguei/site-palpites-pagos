@@ -170,13 +170,28 @@ app.get('/api/rankings/general', verifyToken, async (req, res) => {
         // Esta consulta busca o nome de cada usuário e soma todos os pontos
         // que ele já ganhou em todos os eventos.
         const query = `
-    SELECT 
-        u.username, 
-        COALESCE(SUM(p.points_awarded), 0) as total_points -- COALESCE garante que se a soma for nula, retorne 0
+    WITH CombinedPoints AS (
+        -- Pega todos os pontos da tabela de palpites de lutas
+        SELECT user_id, points_awarded FROM picks
+        UNION ALL
+        -- Adiciona todos os pontos da tabela de palpites bônus
+        SELECT user_id, points_awarded FROM bonus_picks
+    ),
+    UserTotals AS (
+        -- Soma todos os pontos (de ambas as tabelas) para cada usuário
+        SELECT 
+            user_id,
+            SUM(points_awarded) as total_points
+        FROM CombinedPoints
+        GROUP BY user_id
+    )
+    -- Seleciona o nome do usuário e sua pontuação total final
+    SELECT
+        u.username,
+        COALESCE(ut.total_points, 0) as total_points
     FROM users u
-    LEFT JOIN picks p ON u.id = p.user_id
-    WHERE u.is_admin = FALSE
-    GROUP BY u.id
+    LEFT JOIN UserTotals ut ON u.id = ut.user_id
+    WHERE u.is_admin = FALSE -- Continua excluindo admins do ranking público
     ORDER BY total_points DESC, u.username ASC;
 `;
         const result = await pool.query(query);
