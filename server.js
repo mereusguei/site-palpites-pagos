@@ -397,17 +397,57 @@ app.put('/api/admin/events/:eventId', verifyToken, verifyAdmin, async (req, res)
 // ROTA PARA ATUALIZAR OS DETALHES DE UMA LUTA
 app.put('/api/admin/fights/:fightId', verifyToken, verifyAdmin, async (req, res) => {
     const { fightId } = req.params;
-    const { fighter1_name, fighter1_record, fighter1_img, fighter2_name, fighter2_record, fighter2_img } = req.body;
+    const newData = req.body;
+    const client = await pool.connect();
+
     try {
-        const result = await pool.query(
+        await client.query('BEGIN'); // Inicia a transação
+
+        // 1. Pega os dados ANTIGOS da luta antes de atualizar
+        const oldFightResult = await client.query('SELECT * FROM fights WHERE id = $1', [fightId]);
+        if (oldFightResult.rows.length === 0) {
+            throw new Error('Luta não encontrada.');
+        }
+        const oldData = oldFightResult.rows[0];
+
+        // 2. Atualiza a luta na tabela 'fights' com os NOVOS dados
+        const updatedFight = await client.query(
             `UPDATE fights SET fighter1_name = $1, fighter1_record = $2, fighter1_img = $3, 
              fighter2_name = $4, fighter2_record = $5, fighter2_img = $6 
              WHERE id = $7 RETURNING *`,
-            [fighter1_name, fighter1_record, fighter1_img, fighter2_name, fighter2_record, fighter2_img, fightId]
+            [newData.fighter1_name, newData.fighter1_record, newData.fighter1_img, newData.fighter2_name, newData.fighter2_record, newData.fighter2_img, fightId]
         );
-        res.json({ message: 'Luta atualizada com sucesso!', fight: result.rows[0] });
+
+        // 3. Verifica se os nomes dos lutadores mudaram e atualiza em cascata
+        const nameChanges = [];
+        if (oldData.fighter1_name !== newData.fighter1_name) {
+            nameChanges.push({ old: oldData.fighter1_name, new: newData.fighter1_name });
+        }
+        if (oldData.fighter2_name !== newData.fighter2_name) {
+            nameChanges.push({ old: oldData.fighter2_name, new: newData.fighter2_name });
+        }
+
+        // Para cada nome que mudou, atualiza em todas as outras tabelas
+        for (const change of nameChanges) {
+            // Atualiza na tabela de palpites
+            await client.query('UPDATE picks SET predicted_winner_name = $1 WHERE predicted_winner_name = $2', [change.new, change.old]);
+            // Atualiza na tabela de bônus de performance
+            await client.query('UPDATE bonus_picks SET performance_of_the_night_fighter_name = $1 WHERE performance_of_the_night_fighter_name = $2', [change.new, change.old]);
+            // Atualiza nos resultados reais da própria tabela de lutas (se já foi apurado)
+            await client.query('UPDATE fights SET winner_name = $1 WHERE winner_name = $2', [change.new, change.old]);
+            // Atualiza nos resultados reais dos bônus na tabela de eventos
+            await client.query('UPDATE events SET real_potn_fighter_name = $1 WHERE real_potn_fighter_name = $2', [change.new, change.old]);
+        }
+
+        await client.query('COMMIT'); // Confirma todas as alterações
+        res.json({ message: 'Luta e todos os registros associados atualizados com sucesso!', fight: updatedFight.rows[0] });
+
     } catch (error) {
+        await client.query('ROLLBACK'); // Desfaz tudo em caso de erro
+        console.error('Erro ao atualizar luta:', error);
         res.status(500).json({ error: 'Erro ao atualizar luta.' });
+    } finally {
+        client.release();
     }
 });
 
