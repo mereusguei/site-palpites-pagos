@@ -290,15 +290,12 @@ app.get('/api/rankings/general', verifyToken, async (req, res) => {
 
 // --- ROTAS DE PAGAMENTO ---
 app.post('/api/create-payment', verifyToken, async (req, res) => {
-    const { eventId } = req.body; // Só precisamos do ID do evento
+    const { eventId } = req.body;
     const userId = req.user.id;
-
     try {
-        // 1. Busca os dados mais recentes do evento diretamente do banco
-        const eventResult = await pool.query('SELECT name, picks_deadline FROM events WHERE id = $1', [eventId]);
-        if (eventResult.rows.length === 0) {
-            return res.status(404).json({ error: "Evento não encontrado para criar pagamento." });
-        }
+        // Busca os dados do evento, incluindo o NOVO campo de preço
+        const eventResult = await pool.query('SELECT name, picks_deadline, entry_price FROM events WHERE id = $1', [eventId]);
+        if (eventResult.rows.length === 0) return res.status(404).json({ error: "Evento não encontrado." });
         const event = eventResult.rows[0];
         const eventName = event.name;
 
@@ -316,9 +313,10 @@ if (now > deadlineTime) {
             body: {
                 items: [{
                     id: `evt-${eventId}`,
-                    title: `Acesso aos Palpites: ${eventName}`,
+                    title: `Acesso aos Palpites: ${event.name}`,
                     quantity: 1,
-                    unit_price: 5.00, // Lembre-se de voltar para 5.00 quando quiser
+                    // USA O PREÇO VINDO DO BANCO DE DADOS!
+                    unit_price: parseFloat(event.entry_price), 
                     currency_id: 'BRL',
                 }],
                 back_urls: { 
@@ -336,7 +334,6 @@ if (now > deadlineTime) {
         });
 
         res.json({ checkoutUrl: result.init_point });
-
     } catch (error) {
         console.error('Erro ao criar preferência de pagamento:', error);
         res.status(500).json({ error: 'Não foi possível iniciar o pagamento.' });
@@ -586,7 +583,21 @@ app.put('/api/admin/fights/order', verifyToken, verifyAdmin, async (req, res) =>
         client.release();
     }
 });
-
+// ROTA DE ADMIN PARA ATUALIZAR O PREÇO DE UM EVENTO
+app.put('/api/admin/events/price/:eventId', verifyToken, verifyAdmin, async (req, res) => {
+    const { eventId } = req.params;
+    const { price } = req.body;
+    if (!price || isNaN(parseFloat(price))) {
+        return res.status(400).json({ error: 'Preço inválido.' });
+    }
+    try {
+        await pool.query('UPDATE events SET entry_price = $1 WHERE id = $2', [price, eventId]);
+        res.json({ message: `Preço do evento ${eventId} atualizado para R$ ${price}.` });
+    } catch (error) {
+        console.error('Erro ao atualizar preço:', error);
+        res.status(500).json({ error: 'Erro ao atualizar preço do evento.' });
+    }
+});
 // ROTA PARA REMOVER UMA LUTA ESPECÍFICA
 app.delete('/api/admin/fights/:fightId', verifyToken, verifyAdmin, async (req, res) => {
     const { fightId } = req.params;
