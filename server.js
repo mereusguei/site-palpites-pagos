@@ -10,7 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const mpClient = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
-    const JWT_SECRET = process.env.JWT_SECRET || 'sua-chave-secreta-super-dificil-de-adivinhar-123';
+const JWT_SECRET = process.env.JWT_SECRET || 'sua-chave-secreta-super-dificil-de-adivinhar-123';
 
 app.use(cors());
 app.use(express.json());
@@ -80,18 +80,18 @@ app.get('/api/events/:id', verifyToken, async (req, res) => {
     try {
         const eventResult = await pool.query('SELECT * FROM events WHERE id = $1', [eventId]);
         if (eventResult.rows.length === 0) return res.status(404).json({ error: 'Evento não encontrado.' });
-        
+
         // CORREÇÃO: Verifica se a coluna de ordenação existe antes de usá-la
         const columnsResult = await pool.query(
             "SELECT column_name FROM information_schema.columns WHERE table_name='fights' AND column_name='fight_order'"
         );
-        
-        const orderByClause = columnsResult.rows.length > 0 
-            ? 'ORDER BY fight_order ASC, id ASC' 
+
+        const orderByClause = columnsResult.rows.length > 0
+            ? 'ORDER BY fight_order ASC, id ASC'
             : 'ORDER BY id ASC';
 
         const fightsResult = await pool.query(`SELECT * FROM fights WHERE event_id = $1 ${orderByClause}`, [eventId]);
-        
+
         const picksResult = await pool.query('SELECT * FROM picks WHERE user_id = $1 AND fight_id IN (SELECT id FROM fights WHERE event_id = $2)', [userId, eventId]);
         const userPicks = picksResult.rows.reduce((acc, pick) => { acc[pick.fight_id] = pick; return acc; }, {});
 
@@ -103,16 +103,16 @@ app.get('/api/events/:id', verifyToken, async (req, res) => {
         // Pega o primeiro resultado (só pode haver um) ou um objeto vazio se não houver
         const userBonusPicks = bonusPicksResult.rows[0] || {};
 
-        res.json({ 
-    eventName: eventResult.rows[0].name, 
-    picksDeadline: eventResult.rows[0].picks_deadline, 
-    fights: fightsResult.rows, 
-    userPicks,
-    userBonusPicks,
-    // --- NOVOS CAMPOS ADICIONADOS ---
-    realFotnFightId: eventResult.rows[0].real_fotn_fight_id,
-    realPotnFighterName: eventResult.rows[0].real_potn_fighter_name
-});
+        res.json({
+            eventName: eventResult.rows[0].name,
+            picksDeadline: eventResult.rows[0].picks_deadline,
+            entry_price: eventResult.rows[0].entry_price, // <-- LINHA ADICIONADA AQUI
+            fights: fightsResult.rows,
+            userPicks,
+            userBonusPicks,
+            realFotnFightId: eventResult.rows[0].real_fotn_fight_id,
+            realPotnFighterName: eventResult.rows[0].real_potn_fighter_name
+        });
     } catch (error) {
         console.error('Erro ao buscar dados do evento:', error);
         res.status(500).json({ error: 'Erro ao buscar dados do evento.' });
@@ -134,7 +134,7 @@ app.post('/api/picks', verifyToken, async (req, res) => {
     if (!fightId || !winnerName || !method || !details) {
         return res.status(400).json({ error: 'Dados do palpite incompletos.' });
     }
-    
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN'); // Inicia a transação
@@ -149,16 +149,16 @@ app.post('/api/picks', verifyToken, async (req, res) => {
                 predicted_details = EXCLUDED.predicted_details
             RETURNING *;`;
         await client.query(upsertQuery, [userId, fightId, winnerName, method, details]);
-        
+
         // --- NOVA LÓGICA: REAPURAÇÃO EM TEMPO REAL ---
-        
+
         // 2. Busca o resultado real da luta, se ele existir
         const fightResult = await client.query('SELECT winner_name, result_method, result_details FROM fights WHERE id = $1', [fightId]);
-        
+
         let points = 0;
         if (fightResult.rows.length > 0 && fightResult.rows[0].winner_name) {
             const realResult = fightResult.rows[0];
-            
+
             // 3. Compara o palpite com o resultado real e calcula os pontos
             if (winnerName === realResult.winner_name) {
                 points += 20;
@@ -170,13 +170,13 @@ app.post('/api/picks', verifyToken, async (req, res) => {
                 }
             }
         }
-        
+
         // 4. Atualiza a pontuação do palpite com o valor calculado (seja 0 ou mais)
         const finalPickResult = await client.query(
-            'UPDATE picks SET points_awarded = $1 WHERE user_id = $2 AND fight_id = $3 RETURNING *', 
+            'UPDATE picks SET points_awarded = $1 WHERE user_id = $2 AND fight_id = $3 RETURNING *',
             [points, userId, fightId]
         );
-        
+
         await client.query('COMMIT'); // Confirma todas as alterações
 
         // Retorna o palpite final com a pontuação já calculada
@@ -194,7 +194,7 @@ app.post('/api/picks', verifyToken, async (req, res) => {
 app.post('/api/bonus-picks', verifyToken, async (req, res) => {
     const userId = req.user.id;
     const { eventId, fightOfTheNight, performanceOfTheNight } = req.body;
-    
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -209,19 +209,19 @@ app.post('/api/bonus-picks', verifyToken, async (req, res) => {
             RETURNING id;`;
         const upsertResult = await client.query(upsertQuery, [userId, eventId, parseInt(fightOfTheNight), performanceOfTheNight]);
         const bonusPickId = upsertResult.rows[0].id;
-        
+
         // --- NOVA LÓGICA: REAPURAÇÃO EM TEMPO REAL PARA BÔNUS ---
-        
+
         // 2. Busca os resultados reais dos bônus para o evento, se existirem
         const eventResult = await client.query(
-            'SELECT real_fotn_fight_id, real_potn_fighter_name FROM events WHERE id = $1', 
+            'SELECT real_fotn_fight_id, real_potn_fighter_name FROM events WHERE id = $1',
             [eventId]
         );
-        
+
         let bonusPoints = 0;
         if (eventResult.rows.length > 0) {
             const realBonusResults = eventResult.rows[0];
-            
+
             // 3. Compara os palpites com os resultados reais e calcula os pontos
             if (realBonusResults.real_fotn_fight_id && fightOfTheNight == realBonusResults.real_fotn_fight_id) {
                 bonusPoints += 20;
@@ -230,13 +230,13 @@ app.post('/api/bonus-picks', verifyToken, async (req, res) => {
                 bonusPoints += 20;
             }
         }
-        
+
         // 4. Atualiza a pontuação do palpite bônus com o valor calculado
         const finalBonusPickResult = await client.query(
-            'UPDATE bonus_picks SET points_awarded = $1 WHERE id = $2 RETURNING *', 
+            'UPDATE bonus_picks SET points_awarded = $1 WHERE id = $2 RETURNING *',
             [bonusPoints, bonusPickId]
         );
-        
+
         await client.query('COMMIT');
 
         res.status(201).json({ message: 'Palpites bônus salvos!', pick: finalBonusPickResult.rows[0] });
@@ -300,12 +300,12 @@ app.post('/api/create-payment', verifyToken, async (req, res) => {
         const eventName = event.name;
 
         // 2. Verifica se o prazo para palpites (em UTC) já não expirou
-const deadlineTime = new Date(event.picks_deadline).getTime();
-const now = new Date().getTime();
+        const deadlineTime = new Date(event.picks_deadline).getTime();
+        const now = new Date().getTime();
 
-if (now > deadlineTime) {
-    return res.status(400).json({ error: "O prazo para pagamentos deste evento já encerrou." });
-}
+        if (now > deadlineTime) {
+            return res.status(400).json({ error: "O prazo para pagamentos deste evento já encerrou." });
+        }
 
         // 3. Cria a preferência de pagamento
         const preference = new Preference(mpClient);
@@ -316,13 +316,13 @@ if (now > deadlineTime) {
                     title: `Acesso aos Palpites: ${event.name}`,
                     quantity: 1,
                     // USA O PREÇO VINDO DO BANCO DE DADOS!
-                    unit_price: parseFloat(event.entry_price), 
+                    unit_price: parseFloat(event.entry_price),
                     currency_id: 'BRL',
                 }],
-                back_urls: { 
-                    success: 'https://mereusguei.github.io/payment-success.html', 
-                    failure: 'https://mereusguei.github.io/', 
-                    pending: 'https://mereusguei.github.io/' 
+                back_urls: {
+                    success: 'https://mereusguei.github.io/payment-success.html',
+                    failure: 'https://mereusguei.github.io/',
+                    pending: 'https://mereusguei.github.io/'
                 },
                 auto_return: 'approved',
                 metadata: { user_id: userId, event_id: eventId },
@@ -364,7 +364,7 @@ app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
     // CORREÇÃO: Pega o eventId diretamente do corpo da requisição
     const { eventId, resultsArray, realFightOfTheNightId, realPerformanceOfTheNightFighter } = req.body;
     const dbClient = await pool.connect();
-    
+
     try {
         await dbClient.query('BEGIN');
 
@@ -372,7 +372,7 @@ app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
         if (resultsArray && resultsArray.length > 0) {
             for (const result of resultsArray) {
                 const { fightId, winnerName, resultMethod, resultDetails } = result;
-                
+
                 await dbClient.query('UPDATE picks SET points_awarded = 0 WHERE fight_id = $1', [fightId]);
                 await dbClient.query('UPDATE fights SET winner_name = $1, result_method = $2, result_details = $3 WHERE id = $4', [winnerName, resultMethod, resultDetails, fightId]);
 
@@ -398,12 +398,12 @@ app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
             await dbClient.query(
                 'UPDATE events SET real_fotn_fight_id = $1, real_potn_fighter_name = $2 WHERE id = $3',
                 [
-                    realFightOfTheNightId === 'NONE' ? null : realFightOfTheNightId, 
-                    realPerformanceOfTheNightFighter === 'NONE' ? null : realPerformanceOfTheNightFighter, 
+                    realFightOfTheNightId === 'NONE' ? null : realFightOfTheNightId,
+                    realPerformanceOfTheNightFighter === 'NONE' ? null : realPerformanceOfTheNightFighter,
                     eventId
                 ]
             );
-            
+
             await dbClient.query('UPDATE bonus_picks SET points_awarded = 0 WHERE event_id = $1', [eventId]);
             const bonusPicksResult = await dbClient.query('SELECT * FROM bonus_picks WHERE event_id = $1', [eventId]);
 
@@ -418,7 +418,7 @@ app.post('/api/admin/results', verifyToken, verifyAdmin, async (req, res) => {
                 await dbClient.query('UPDATE bonus_picks SET points_awarded = $1 WHERE id = $2', [bonusPoints, bonusPick.id]);
             }
         }
-        
+
         await dbClient.query('COMMIT');
         res.json({ message: `Apuração para o evento ${eventId} concluída com sucesso!` });
 
@@ -441,10 +441,10 @@ app.post('/api/admin/events', verifyToken, verifyAdmin, async (req, res) => {
             'INSERT INTO events (name, event_date, picks_deadline) VALUES ($1, $2, $3) RETURNING *',
             [name, eventDate, picksDeadline]
         );
-        res.status(201).json({ 
-    message: 'Evento criado com sucesso!', 
-    event: result.rows[0] 
-});
+        res.status(201).json({
+            message: 'Evento criado com sucesso!',
+            event: result.rows[0]
+        });
     } catch (error) {
         console.error('Erro ao criar evento:', error);
         res.status(500).json({ error: 'Erro interno do servidor.' });
@@ -463,10 +463,10 @@ app.post('/api/admin/fights', verifyToken, verifyAdmin, async (req, res) => {
              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
             [event_id, fighter1_name, fighter1_record, fighter1_img, fighter2_name, fighter2_record, fighter2_img]
         );
-        res.status(201).json({ 
-    message: 'Luta adicionada com sucesso!', 
-    fight: result.rows[0] 
-});
+        res.status(201).json({
+            message: 'Luta adicionada com sucesso!',
+            fight: result.rows[0]
+        });
     } catch (error) {
         console.error('Erro ao adicionar luta:', error);
         res.status(500).json({ error: 'Erro interno do servidor.' });
@@ -646,7 +646,7 @@ app.delete('/api/admin/events/:eventId', verifyToken, verifyAdmin, async (req, r
 app.post('/api/bonus-picks', verifyToken, async (req, res) => {
     const userId = req.user.id;
     const { eventId, fightOfTheNight, performanceOfTheNight } = req.body;
-    
+
     const query = `
         INSERT INTO bonus_picks (user_id, event_id, fight_of_the_night_fight_id, performance_of_the_night_fighter_name)
         VALUES ($1, $2, $3, $4)
@@ -664,7 +664,7 @@ app.post('/api/bonus-picks', verifyToken, async (req, res) => {
 });
 app.get('/api/admin/all-picks', verifyToken, verifyAdmin, async (req, res) => {
     try {
-    const query = `
+        const query = `
         SELECT 
             e.id as event_id, e.name as event_name, u.id as user_id, u.username,
             p.id as pick_id, p.fight_id, p.predicted_winner_name, p.predicted_method, 
@@ -680,59 +680,59 @@ app.get('/api/admin/all-picks', verifyToken, verifyAdmin, async (req, res) => {
         WHERE e.id = 1 AND u.is_admin = FALSE
         ORDER BY u.username, p.fight_id;
     `;
-    const allData = await pool.query(query);
+        const allData = await pool.query(query);
 
-    // Agora, processamos os dados para calcular o total de pontos
-    const results = {};
-    for (const row of allData.rows) {
-        if (!results[row.event_id]) {
-            results[row.event_id] = { eventName: row.event_name, users: {} };
-        }
-        if (row.user_id && !results[row.event_id].users[row.user_id]) {
-            results[row.event_id].users[row.user_id] = {
-                username: row.username,
-                picks: [],
-                bonus_picks: { fotn_fight_id: row.bonus_fotn_pick, potn_fighter: row.bonus_potn_pick },
-                stats: { totalPicks: 0, correctWinners: 0, correctMethods: 0, correctDetails: 0, totalPoints: 0 }
-            };
-        }
-        if (row.pick_id) {
-            const userEventData = results[row.event_id].users[row.user_id];
-            if (!userEventData.picks.some(p => p.pick_id === row.pick_id)) {
-                userEventData.picks.push(row);
-                const stats = userEventData.stats;
-                stats.totalPicks++;
-                // A pontuação individual da luta (points_awarded) JÁ ESTÁ EM CADA `row`
-                if (row.real_winner) {
-                    if (row.predicted_winner_name === row.real_winner) {
-                        stats.correctWinners++;
-                        if (row.predicted_method === row.real_method) {
-                            stats.correctMethods++;
-                            if (row.predicted_details === row.real_details) {
-                                stats.correctDetails++;
+        // Agora, processamos os dados para calcular o total de pontos
+        const results = {};
+        for (const row of allData.rows) {
+            if (!results[row.event_id]) {
+                results[row.event_id] = { eventName: row.event_name, users: {} };
+            }
+            if (row.user_id && !results[row.event_id].users[row.user_id]) {
+                results[row.event_id].users[row.user_id] = {
+                    username: row.username,
+                    picks: [],
+                    bonus_picks: { fotn_fight_id: row.bonus_fotn_pick, potn_fighter: row.bonus_potn_pick },
+                    stats: { totalPicks: 0, correctWinners: 0, correctMethods: 0, correctDetails: 0, totalPoints: 0 }
+                };
+            }
+            if (row.pick_id) {
+                const userEventData = results[row.event_id].users[row.user_id];
+                if (!userEventData.picks.some(p => p.pick_id === row.pick_id)) {
+                    userEventData.picks.push(row);
+                    const stats = userEventData.stats;
+                    stats.totalPicks++;
+                    // A pontuação individual da luta (points_awarded) JÁ ESTÁ EM CADA `row`
+                    if (row.real_winner) {
+                        if (row.predicted_winner_name === row.real_winner) {
+                            stats.correctWinners++;
+                            if (row.predicted_method === row.real_method) {
+                                stats.correctMethods++;
+                                if (row.predicted_details === row.real_details) {
+                                    stats.correctDetails++;
+                                }
                             }
                         }
                     }
                 }
             }
         }
-    }
 
-    // Loop final para somar os pontos totais corretamente
-    for (const eventId in results) {
-        for (const userId in results[eventId].users) {
-            const user = results[eventId].users[userId];
-            const totalFightPoints = user.picks.reduce((sum, pick) => sum + (pick.points_awarded || 0), 0);
-            
-            // Precisamos buscar os pontos de bônus separadamente para garantir a soma correta
-            const bonusPointsResult = await pool.query('SELECT COALESCE(SUM(points_awarded), 0) as total_bonus FROM bonus_picks WHERE user_id = $1 AND event_id = $2', [userId, eventId]);
-            const totalBonusPoints = parseInt(bonusPointsResult.rows[0].total_bonus, 10);
-            
-            user.stats.totalPoints = totalFightPoints + totalBonusPoints;
+        // Loop final para somar os pontos totais corretamente
+        for (const eventId in results) {
+            for (const userId in results[eventId].users) {
+                const user = results[eventId].users[userId];
+                const totalFightPoints = user.picks.reduce((sum, pick) => sum + (pick.points_awarded || 0), 0);
+
+                // Precisamos buscar os pontos de bônus separadamente para garantir a soma correta
+                const bonusPointsResult = await pool.query('SELECT COALESCE(SUM(points_awarded), 0) as total_bonus FROM bonus_picks WHERE user_id = $1 AND event_id = $2', [userId, eventId]);
+                const totalBonusPoints = parseInt(bonusPointsResult.rows[0].total_bonus, 10);
+
+                user.stats.totalPoints = totalFightPoints + totalBonusPoints;
+            }
         }
-    }
 
-    res.json(results);
+        res.json(results);
     } catch (error) {
         console.error('Erro ao buscar todos os palpites:', error);
         res.status(500).json({ error: 'Erro ao buscar dados.' });
