@@ -217,12 +217,13 @@ app.post('/api/create-payment', verifyToken, async (req, res) => {
         const event = eventResult.rows[0];
         const eventName = event.name;
 
-        // 2. Verifica se o prazo para palpites (e pagamentos) já não expirou
-        const deadlineTime = new Date(event.picks_deadline).getTime();
-        const now = new Date().getTime();
-        if (now > deadlineTime) {
-            return res.status(400).json({ error: "O prazo para pagamentos deste evento já encerrou." });
-        }
+        // 2. Verifica se o prazo para palpites (em UTC) já não expirou
+const deadlineTime = new Date(event.picks_deadline).getTime();
+const now = new Date().getTime();
+
+if (now > deadlineTime) {
+    return res.status(400).json({ error: "O prazo para pagamentos deste evento já encerrou." });
+}
 
         // 3. Cria a preferência de pagamento
         const preference = new Preference(mpClient);
