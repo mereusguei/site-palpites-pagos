@@ -194,17 +194,59 @@ app.post('/api/picks', verifyToken, async (req, res) => {
 app.post('/api/bonus-picks', verifyToken, async (req, res) => {
     const userId = req.user.id;
     const { eventId, fightOfTheNight, performanceOfTheNight } = req.body;
-    const query = `
-        INSERT INTO bonus_picks (user_id, event_id, fight_of_the_night_fight_id, performance_of_the_night_fighter_name)
-        VALUES ($1, $2, $3, $4) ON CONFLICT (user_id, event_id) DO UPDATE SET
-            fight_of_the_night_fight_id = EXCLUDED.fight_of_the_night_fight_id,
-            performance_of_the_night_fighter_name = EXCLUDED.performance_of_the_night_fighter_name
-        RETURNING *;`;
+    
+    const client = await pool.connect();
     try {
-        const result = await pool.query(query, [userId, eventId, parseInt(fightOfTheNight), performanceOfTheNight]);
-        res.status(201).json({ message: 'Palpites bônus salvos!', pick: result.rows[0] });
+        await client.query('BEGIN');
+
+        // 1. Salva ou atualiza o palpite bônus do usuário
+        const upsertQuery = `
+            INSERT INTO bonus_picks (user_id, event_id, fight_of_the_night_fight_id, performance_of_the_night_fighter_name)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (user_id, event_id) DO UPDATE SET
+                fight_of_the_night_fight_id = EXCLUDED.fight_of_the_night_fight_id,
+                performance_of_the_night_fighter_name = EXCLUDED.performance_of_the_night_fighter_name
+            RETURNING id;`;
+        const upsertResult = await client.query(upsertQuery, [userId, eventId, parseInt(fightOfTheNight), performanceOfTheNight]);
+        const bonusPickId = upsertResult.rows[0].id;
+        
+        // --- NOVA LÓGICA: REAPURAÇÃO EM TEMPO REAL PARA BÔNUS ---
+        
+        // 2. Busca os resultados reais dos bônus para o evento, se existirem
+        const eventResult = await client.query(
+            'SELECT real_fotn_fight_id, real_potn_fighter_name FROM events WHERE id = $1', 
+            [eventId]
+        );
+        
+        let bonusPoints = 0;
+        if (eventResult.rows.length > 0) {
+            const realBonusResults = eventResult.rows[0];
+            
+            // 3. Compara os palpites com os resultados reais e calcula os pontos
+            if (realBonusResults.real_fotn_fight_id && fightOfTheNight == realBonusResults.real_fotn_fight_id) {
+                bonusPoints += 20;
+            }
+            if (realBonusResults.real_potn_fighter_name && performanceOfTheNight === realBonusResults.real_potn_fighter_name) {
+                bonusPoints += 20;
+            }
+        }
+        
+        // 4. Atualiza a pontuação do palpite bônus com o valor calculado
+        const finalBonusPickResult = await client.query(
+            'UPDATE bonus_picks SET points_awarded = $1 WHERE id = $2 RETURNING *', 
+            [bonusPoints, bonusPickId]
+        );
+        
+        await client.query('COMMIT');
+
+        res.status(201).json({ message: 'Palpites bônus salvos!', pick: finalBonusPickResult.rows[0] });
+
     } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Erro ao salvar palpites bônus:', error);
         res.status(500).json({ error: 'Erro ao salvar palpites bônus.' });
+    } finally {
+        client.release();
     }
 });
 // ROTA PÚBLICA (PARA USUÁRIOS LOGADOS) PARA O RANKING GERAL
