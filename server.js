@@ -81,7 +81,16 @@ app.get('/api/events/:id', verifyToken, async (req, res) => {
         const eventResult = await pool.query('SELECT * FROM events WHERE id = $1', [eventId]);
         if (eventResult.rows.length === 0) return res.status(404).json({ error: 'Evento não encontrado.' });
         
-        const fightsResult = await pool.query('SELECT * FROM fights WHERE event_id = $1 ORDER BY fight_order ASC, id ASC', [eventId]);
+        // CORREÇÃO: Verifica se a coluna de ordenação existe antes de usá-la
+        const columnsResult = await pool.query(
+            "SELECT column_name FROM information_schema.columns WHERE table_name='fights' AND column_name='fight_order'"
+        );
+        
+        const orderByClause = columnsResult.rows.length > 0 
+            ? 'ORDER BY fight_order ASC, id ASC' 
+            : 'ORDER BY id ASC';
+
+        const fightsResult = await pool.query(`SELECT * FROM fights WHERE event_id = $1 ${orderByClause}`, [eventId]);
         
         const picksResult = await pool.query('SELECT * FROM picks WHERE user_id = $1 AND fight_id IN (SELECT id FROM fights WHERE event_id = $2)', [userId, eventId]);
         const userPicks = picksResult.rows.reduce((acc, pick) => { acc[pick.fight_id] = pick; return acc; }, {});
