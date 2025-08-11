@@ -794,11 +794,32 @@ app.get('/api/rankings/accuracy', verifyToken, verifyAdmin, async (req, res) => 
         res.status(500).json({ error: 'Erro ao buscar rankings de acerto.' });
     }
 });
-// Rota de Admin para buscar a lista de todos os eventos
-// Serve para o painel de admin saber quais eventos exibir para apuração.
-app.get('/api/admin/events', verifyToken, verifyAdmin, async (req, res) => {
+// Rota para buscar a lista de TODOS os eventos, com filtro de status
+// Nota: 'verifyToken' pois tanto o admin quanto o usuário logado precisam dela.
+app.get('/api/events', verifyToken, async (req, res) => {
+    // O filtro virá como um parâmetro na URL, ex: /api/events?status=upcoming
+    const { status } = req.query;
+
+    let queryClause = '';
+    const now = new Date();
+
+    if (status === 'upcoming') {
+        queryClause = 'WHERE event_date >= $1 ORDER BY event_date ASC';
+    } else if (status === 'past') {
+        queryClause = 'WHERE event_date < $1 ORDER BY event_date DESC';
+    } else {
+        // Se nenhum status for fornecido, retorna todos (útil para o admin)
+        queryClause = 'ORDER BY event_date DESC';
+    }
+
     try {
-        const result = await pool.query('SELECT id, name FROM events ORDER BY id DESC');
+        // Vamos adicionar uma coluna para a imagem do card do evento
+        await pool.query('ALTER TABLE events ADD COLUMN IF NOT EXISTS card_image_url VARCHAR(255);');
+
+        const result = await pool.query(
+            `SELECT id, name, event_date, card_image_url FROM events ${queryClause}`,
+            (status === 'upcoming' || status === 'past') ? [now] : []
+        );
         res.json(result.rows);
     } catch (error) {
         console.error('Erro ao buscar lista de eventos:', error);
