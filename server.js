@@ -131,9 +131,16 @@ app.get('/api/payment-status/:eventId', verifyToken, async (req, res) => {
 app.post('/api/picks', verifyToken, async (req, res) => {
     const userId = req.user.id;
     const { fightId, winnerName, method, details } = req.body;
-    if (!fightId || !winnerName || !method || !details) return res.status(400).json({ error: 'Dados do palpite incompletos.' });
+    if (!fightId || !winnerName || !method || !details) {
+        return res.status(400).json({ error: 'Dados do palpite incompletos.' });
+    }
+    
+    const client = await pool.connect();
     try {
-        const query = `
+        await client.query('BEGIN'); // Inicia a transação
+
+        // 1. Salva ou atualiza o palpite do usuário
+        const upsertQuery = `
             INSERT INTO picks (user_id, fight_id, predicted_winner_name, predicted_method, predicted_details)
             VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (user_id, fight_id) DO UPDATE SET
@@ -141,10 +148,46 @@ app.post('/api/picks', verifyToken, async (req, res) => {
                 predicted_method = EXCLUDED.predicted_method,
                 predicted_details = EXCLUDED.predicted_details
             RETURNING *;`;
-        const result = await pool.query(query, [userId, fightId, winnerName, method, details]);
-        res.status(201).json({ message: 'Palpite salvo com sucesso!', pick: result.rows[0] });
+        await client.query(upsertQuery, [userId, fightId, winnerName, method, details]);
+        
+        // --- NOVA LÓGICA: REAPURAÇÃO EM TEMPO REAL ---
+        
+        // 2. Busca o resultado real da luta, se ele existir
+        const fightResult = await client.query('SELECT winner_name, result_method, result_details FROM fights WHERE id = $1', [fightId]);
+        
+        let points = 0;
+        if (fightResult.rows.length > 0 && fightResult.rows[0].winner_name) {
+            const realResult = fightResult.rows[0];
+            
+            // 3. Compara o palpite com o resultado real e calcula os pontos
+            if (winnerName === realResult.winner_name) {
+                points += 20;
+                if (method === realResult.result_method) {
+                    points += 15;
+                    if (details === realResult.result_details) {
+                        points += 10;
+                    }
+                }
+            }
+        }
+        
+        // 4. Atualiza a pontuação do palpite com o valor calculado (seja 0 ou mais)
+        const finalPickResult = await client.query(
+            'UPDATE picks SET points_awarded = $1 WHERE user_id = $2 AND fight_id = $3 RETURNING *', 
+            [points, userId, fightId]
+        );
+        
+        await client.query('COMMIT'); // Confirma todas as alterações
+
+        // Retorna o palpite final com a pontuação já calculada
+        res.status(201).json({ message: 'Palpite salvo com sucesso!', pick: finalPickResult.rows[0] });
+
     } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Erro ao salvar palpite:', error);
         res.status(500).json({ error: 'Erro ao salvar o palpite.' });
+    } finally {
+        client.release();
     }
 });
 // ROTA PARA SALVAR PALPITES BÔNUS (ESTAVA FALTANDO)
