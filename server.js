@@ -85,7 +85,16 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(401).json({ error: 'Credenciais inválidas.' });
         }
         const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '1d' });
-        res.json({ message: 'Login bem-sucedido!', token, user: { id: user.id, username: user.username, email: user.email } });
+        res.json({
+            message: 'Login bem-sucedido!',
+            token,
+            user: { // Envia o objeto de usuário completo
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                profile_picture_url: user.profile_picture_url // <-- CAMPO ADICIONADO AQUI
+            }
+        });
     } catch (error) {
         res.status(500).json({ error: 'Erro interno do servidor.' });
     }
