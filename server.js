@@ -817,7 +817,8 @@ app.get('/api/events', verifyToken, async (req, res) => {
         await pool.query('ALTER TABLE events ADD COLUMN IF NOT EXISTS card_image_url VARCHAR(255);');
 
         const result = await pool.query(
-            `SELECT id, name, event_date, card_image_url FROM events ${queryClause}`,
+            // ADICIONE 'picks_deadline' AQUI
+            `SELECT id, name, event_date, card_image_url, picks_deadline FROM events ${queryClause}`,
             (status === 'upcoming' || status === 'past') ? [now] : []
         );
         res.json(result.rows);
