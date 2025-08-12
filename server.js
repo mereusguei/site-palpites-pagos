@@ -493,11 +493,11 @@ app.post('/api/admin/fights', verifyToken, verifyAdmin, async (req, res) => {
 // ROTA PARA ATUALIZAR OS DETALHES DE UM EVENTO
 app.put('/api/admin/events/:eventId', verifyToken, verifyAdmin, async (req, res) => {
     const { eventId } = req.params;
-    const { name, eventDate, picksDeadline } = req.body;
+    const { name, eventDate, picksDeadline, card_image_url } = req.body;
     try {
         const result = await pool.query(
-            'UPDATE events SET name = $1, event_date = $2, picks_deadline = $3 WHERE id = $4 RETURNING *',
-            [name, eventDate, picksDeadline, eventId]
+            'UPDATE events SET name = $1, event_date = $2, picks_deadline = $3, card_image_url = $4 WHERE id = $5 RETURNING *',
+            [name, eventDate, picksDeadline, card_image_url, eventId] // Garanta que card_image_url está aqui
         );
         res.json({ message: 'Evento atualizado com sucesso!', event: result.rows[0] });
     } catch (error) {
