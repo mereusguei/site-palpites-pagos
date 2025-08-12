@@ -616,6 +616,27 @@ app.put('/api/admin/events/price/:eventId', verifyToken, verifyAdmin, async (req
         res.status(500).json({ error: 'Erro ao atualizar preço do evento.' });
     }
 });
+// ROTA PARA O USUÁRIO ATUALIZAR SUA SENHA
+app.put('/api/users/profile', verifyToken, async (req, res) => {
+    const userId = req.user.id;
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) { // Exemplo de validação
+        return res.status(400).json({ error: 'A nova senha precisa ter no mínimo 6 caracteres.' });
+    }
+
+    try {
+        const salt = await bcrypt.genSalt(10);
+        const password_hash = await bcrypt.hash(newPassword, salt);
+
+        await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [password_hash, userId]);
+
+        res.json({ message: 'Senha atualizada com sucesso!' });
+    } catch (error) {
+        console.error('Erro ao atualizar senha:', error);
+        res.status(500).json({ error: 'Erro interno do servidor.' });
+    }
+});
 // ROTA PARA REMOVER UMA LUTA ESPECÍFICA
 app.delete('/api/admin/fights/:fightId', verifyToken, verifyAdmin, async (req, res) => {
     const { fightId } = req.params;
