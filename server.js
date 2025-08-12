@@ -826,7 +826,14 @@ app.get('/api/events', verifyToken, async (req, res) => {
         res.status(500).json({ error: 'Erro ao buscar eventos.' });
     }
 });
-
+app.get('/api/admin/events', verifyToken, verifyAdmin, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM events ORDER BY event_date DESC');
+        res.json(result.rows);
+    } catch (error) {
+        res.status(500).json({ error: 'Erro ao buscar eventos.' });
+    }
+});
 // Inicia o servidor
 app.listen(PORT, async () => {
     try {
