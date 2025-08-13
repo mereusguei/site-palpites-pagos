@@ -291,15 +291,16 @@ app.get('/api/rankings/general', verifyToken, async (req, res) => {
     ),
     UserTotals AS (
         -- Soma todos os pontos (de ambas as tabelas) para cada usuário
-        SELECT 
+        SELECT
             user_id,
             SUM(points_awarded) as total_points
         FROM CombinedPoints
         GROUP BY user_id
     )
-    -- Seleciona o nome do usuário e sua pontuação total final
+    -- Seleciona o nome, a URL da foto de perfil e a pontuação total final de cada usuário
     SELECT
         u.username,
+        u.profile_picture_url, -- <-- LINHA ADICIONADA AQUI
         COALESCE(ut.total_points, 0) as total_points
     FROM users u
     LEFT JOIN UserTotals ut ON u.id = ut.user_id
