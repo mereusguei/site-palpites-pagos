@@ -132,8 +132,10 @@ app.get('/api/events/:id', verifyToken, async (req, res) => {
 
         res.json({
             eventName: eventResult.rows[0].name,
+            eventDate: eventResult.rows[0].event_date, // <-- LINHA ADICIONADA
             picksDeadline: eventResult.rows[0].picks_deadline,
-            entry_price: eventResult.rows[0].entry_price, // <-- LINHA ADICIONADA AQUI
+            card_image_url: eventResult.rows[0].card_image_url, // <-- LINHA ADICIONADA
+            entry_price: eventResult.rows[0].entry_price,
             fights: fightsResult.rows,
             userPicks,
             userBonusPicks,
